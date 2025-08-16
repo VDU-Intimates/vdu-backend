@@ -1,0 +1,27 @@
+{
+  "name": "vdu_intimates_backend",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/VDU-Intimates/vdu-backend#readme",
+  "bugs": {
+    "url": "https://github.com/VDU-Intimates/vdu-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VDU-Intimates/vdu-backend.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
