@@ -1,21 +1,24 @@
-const express = require("express");
-const cors = require("cors");
 const dotenv = require("dotenv");
+const express = require("express");
 const mongoose = require("mongoose");
 const userRoutes = require("./routes/user-route");
+const productRouter = require("./routers/product-routers");
 
-dotenv.config();
+dotenv.config(); // must be before using process.env
 
 const app = express();
-app.use(cors());
 app.use(express.json());
+const port = 5000;
 
-mongoose.connect(process.env.MONGODB_URI, {
-  dbName: "VDU-Database",
-}).then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+app.listen(port, () => {
+  console.log(`Server listening at http: //localhost:${port}`);
+});
 
-app.use("/api/users", userRoutes);
+mongoose.connect(process.env.MONGODB_URI)
+        .then(() => console.log("✅ MongoDB connected"))
+        .catch((err) => console.error("❌ MongoDB error:", err));
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+        
+app.use("/api/auth", userRoutes);
+
+app.use("/api/products", productRouter);
