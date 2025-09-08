@@ -3,16 +3,26 @@ const express = require("express");
 const mongoose = require("mongoose");
 const userRoutes = require("./routes/user-route");
 
-dotenv.config(); // must be before using process.env
+dotenv.config(); // load .env first
 
 const app = express();
 app.use(express.json());
-const port = 5000;
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
-});
+const PORT = process.env.PORT || 5000;
 
+// Mount routes
 app.use("/api/auth", userRoutes);
 
-mongoose.connect(process.env.MONGODB_URI).then(() => console.log("MongoDB connected")).catch((err) => console.error("MongoDB error:", err));
+// Connect DB, then start server
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log(" MongoDB connected");
+    app.listen(PORT, () => {
+      console.log(`Server listening at port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error(" MongoDB error:", err);
+    process.exit(1);
+  });
