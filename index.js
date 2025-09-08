@@ -13,9 +13,7 @@ app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });
 
-mongoose.connect(process.env.MONGODB_URI)
-        .then(() => console.log("✅ MongoDB connected"))
-        .catch((err) => console.error("❌ MongoDB error:", err));
+mongoose.connect(process.env.MONGODB_URI).then(() => console.log("✅ MongoDB connected")).catch((err) => console.error("❌ MongoDB error:", err));
 
-        
 app.use("/api/auth", userRoutes);
+        
