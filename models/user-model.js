@@ -1,23 +1,29 @@
-// routes/user-route.js
-const express = require("express");
-const {
-  registerUser,
-  loginUser,
-  getUser,
-  updateUser,
-} = require("../controllers/user-controller");
 
-// Your JWT middleware (what you called validate-token-handler.js)
-const validateToken = require("../middleware/validate-token-handler");
+const mongoose = require("mongoose");
 
-const router = express.Router();
+const userSchema = new mongoose.Schema(
+  {
+    
+    userId:{type: String, required: true, unique:true, index: true,default:generateUserId() },
+    fName: String,
+    lName: String,
+    email: String,
+    password: String,
+    address: String,
+    contact: String,
+    photoURL: {type : String, default: null},
+  },
+  { timestamps: true }
+);
+function generateUserId() {
+    const randomDigits = Math.floor(100000 + Math.random() * 900000); 
+    const today = new Date();
+    const year = today.getFullYear();
+    const monthStr = String(today.getMonth() + 1).padStart(2, "0"); 
+    const day = String(today.getDate()).padStart(2, "0");
+    const datePart = `${year}${monthStr}${day}`;
+    return `USR-${datePart}-${randomDigits}`;
+  }
+  
+module.exports = mongoose.model("User", userSchema);
 
-// Auth
-router.post("/register", registerUser);
-router.post("/login", loginUser);
-
-// Me (protected)
-router.get("/me", validateToken, getUser);
-router.patch("/me", validateToken, updateUser);
-
-module.exports = router;
