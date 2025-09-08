@@ -20,8 +20,4 @@ router.post("/login", loginUser);
 router.get("/me", validateToken, getUser);
 router.patch("/me", validateToken, updateUser);
 
-<<<<<<< HEAD
 module.exports = router;
-=======
-module.exports = router;
->>>>>>> 9b898d9171e8598082526c03b0cb798a21af9fe4
