@@ -1,15 +1,27 @@
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    uid: { type: String, required: true, unique: true },
-    email: { type: String },
-    name: { type: String },
-    provider: { type: String },
-    emailVerified: { type: Boolean, default: false },
-    photoURL: { type: String },
+    
+    userId:{type: String, required: true, unique:true, index: true,default:generateUserId() },
+    fName: String,
+    lName: String,
+    email: String,
+    password: String,
+    address: String,
+    contact: String,
+    photoURL: {type : String, default: null},
   },
   { timestamps: true }
 );
-
-export default mongoose.model("User", userSchema);
+function generateUserId() {
+    const randomDigits = Math.floor(100000 + Math.random() * 900000); 
+    const today = new Date();
+    const year = today.getFullYear();
+    const monthStr = String(today.getMonth() + 1).padStart(2, "0"); 
+    const day = String(today.getDate()).padStart(2, "0");
+    const datePart = `${year}${monthStr}${day}`;
+    return `USR-${datePart}-${randomDigits}`;
+  }
+  
+module.exports = mongoose.model("User", userSchema);
