@@ -7,14 +7,19 @@ dotenv.config(); // must be before using process.env
 
 const app = express();
 app.use(express.json());
-const port = 5000;
 
-mongoose.connect(process.env.MONGODB_URI)
-.then(() => console.log("MongoDB connected"))
-.catch((err) => console.error(" MongoDB error:", err));
+const PORT = process.env.PORT || 5000;
 
+// Connect MongoDB
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error("MongoDB error:", err));
+
+// Routes
 app.use("/api/auth", userRoutes);
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server listening at http://localhost:${PORT}`);
 });
