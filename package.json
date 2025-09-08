@@ -19,12 +19,21 @@
     "dev": "nodemon src/index.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+<<<<<<< HEAD
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.19.0",
     "mongoose": "^8.18.0"
+=======
+    "express-async-handler": "^1.2.0",
+    "firebase-admin": "^13.5.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.18.0",
+    "mongoose-sequence": "^6.0.1"
+>>>>>>> 9b898d9171e8598082526c03b0cb798a21af9fe4
   },
   "devDependencies": {
     "@types/node": "^24.3.1",
