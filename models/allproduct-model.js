@@ -62,4 +62,4 @@ function generateProductId() {
 
 
 module.exports =
-  mongoose.models.Product || mongoose.model("Product", ProductSchema);
+mongoose.models.Product || mongoose.model("Product", ProductSchema);

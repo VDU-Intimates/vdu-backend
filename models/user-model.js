@@ -1,3 +1,4 @@
+
 const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
@@ -24,5 +25,6 @@ function generateUserId() {
     const datePart = `${year}${monthStr}${day}`;
     return `USR-${datePart}-${randomDigits}`;
   }
-  
+
 module.exports = mongoose.model("User", userSchema);
+
