@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const userSchema = new mongoose.Schema(
   {
     
-    userId:{type: String, required: true, unique:true, index: true,default:generateUserId() },
+    userId:{type: String, required: true, unique:true, index: true,default:generateUserId },
     fName: String,
     lName: String,
     email: String,
@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema(
     address: String,
     contact: String,
     photoURL: {type : String, default: null},
+    role: {type: String,enum: ["Customer", "Admin"],default: "Customer"} 
   },
   { timestamps: true }
 );

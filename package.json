@@ -21,12 +21,12 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
-    "express": "^2.5.11",
+    "express": "^4.21.2",
     "express-async-handler": "^1.2.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^3.6.20"
+    "mongodb": "^6.19.0",
+    "mongoose": "^8.18.1"
   },
-  
   "devDependencies": {
     "nodemon": "^1.4.1"
   }
