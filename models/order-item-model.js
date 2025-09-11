@@ -12,6 +12,10 @@ const orderItemSchema = new mongoose.Schema({
         required: true,
         ref: 'Order'
     },
+    name: {
+        type: String,
+        required: true
+    },
     productId: {
         type: String,
         required: true,
@@ -30,6 +34,8 @@ const orderItemSchema = new mongoose.Schema({
         required: true
     }
 })
+
+module.exports = mongoose.model("OrderItem", orderItemSchema);
 
 // function generateOrderItemId() {
 
