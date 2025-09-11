@@ -26,15 +26,10 @@
     "express-async-handler": "^1.2.0",
     "firebase-admin": "^13.5.0",
     "jsonwebtoken": "^9.0.2",
-<<<<<<< HEAD
-    "mongodb": "^6.19.0",
-    "mongoose": "^8.18.1",
-    "nodemailer": "^7.0.6"
-=======
     "mongodb-connection-string-url": "^3.0.2",
-    "mongoose": "^8.18.0",
-    "mongoose-sequence": "^6.0.1"
->>>>>>> d1e615a4acb45d5e1f148c1708b8c5f88637abc2
+    "mongoose": "^8.18.1",
+    "mongoose-sequence": "^6.0.1",
+    "nodemailer": "^7.0.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.1",
