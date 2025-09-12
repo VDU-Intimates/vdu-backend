@@ -6,26 +6,28 @@ const {
   createProduct,
   updateProductById,
   deleteProductById,
-} = require("../controllers/allproduct-controller");
+} = require("../controllers/inventory-controller");
 
-// JWT middlewares (no Firebase)
 const validateToken = require("../middleware/validate-token-handler");
 
-// Simple role check helper
+// simple role guard
 function requireRole(role) {
-  return (req, res, next) => {
-    // req.user should be set by validateToken: { id, email, role?, ... }
+  return (req, _res, next) => {
     const userRole = req.user?.role || "Customer";
-    if (userRole !== role) {
-      return res.status(403).json({ message: "Forbidden: insufficient role" });
-    }
+    if (userRole !== role) return next({ status: 403, message: "Forbidden: insufficient role" });
     next();
   };
 }
 
 const router = express.Router();
 
+// Public list
 router.get("/", listProducts);
+
+// (Optional) get one by :id (works with Mongo _id or productId)
+// router.get("/:id", getProductById);
+
+// Admin-only mutations
 router.post("/", validateToken, requireRole("Admin"), createProduct);
 router.patch("/:id", validateToken, requireRole("Admin"), updateProductById);
 router.delete("/:id", validateToken, requireRole("Admin"), deleteProductById);
