@@ -24,20 +24,7 @@ async function listDesigns(req, res) {
   }
 }
 
-// GET /api/designs/:id
-async function getDesignById(req, res) {
-  try {
-    const d = await Design.findOne({
-      _id: req.params.id,
-      userId: req.user.id,
-    }).lean();
-    if (!d) return res.status(404).json({ error: "Not found" });
-    res.json(d);
-  } catch (err) {
-    console.error("getDesignById error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-}
+
 
 // POST /api/designs
 // body: { designUrl: string, imageUrls: string[], texts: [{content, fontFamily?, fontSize?, color?, left?, top?, angle?}], productId?, productName? }
@@ -86,41 +73,10 @@ async function deleteDesign(req, res) {
   }
 }
 
-// (Optional) PUT /api/designs/:id
-async function updateDesign(req, res) {
-  try {
-    const { designUrl, imageUrls, texts, productId, productName } = req.body || {};
 
-    const update = {};
-    if (designUrl != null) update.designUrl = designUrl;
-    if (imageUrls != null) update.imageUrls = Array.isArray(imageUrls) ? imageUrls : [];
-    if (texts != null) update.texts = Array.isArray(texts) ? texts : [];
-    if (productName != null) update.productName = productName;
-
-    if (productId != null) {
-      // Optional: resolve business id to _id
-      const byBusiness = await Product.findOne({ productId: productId }).select("_id").lean().catch(() => null);
-      update.productId = byBusiness?._id || productId;
-    }
-
-    const d = await Design.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      { $set: update },
-      { new: true }
-    ).lean();
-
-    if (!d) return res.status(404).json({ error: "Not found" });
-    res.json(d);
-  } catch (err) {
-    console.error("updateDesign error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-}
 
 module.exports = {
   listDesigns,
-  getDesignById,
   createDesign,
   deleteDesign,
-  updateDesign,
 };

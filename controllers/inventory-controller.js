@@ -1,5 +1,6 @@
 // POST /api/products   (admin only)
 // body must include required fields from schema
+const Product = require("../models/allproduct-model");
 
 function toStringArray(val) {
   if (Array.isArray(val)) return val.map(String).map(s => s.trim()).filter(Boolean);
@@ -9,67 +10,20 @@ function toStringArray(val) {
 }
 
 
-// async function createProduct(req, res) {
-//   try {
-//     const {
-//       productId,          // optional (autogenerate if missing)
-//       productName,
-//       description,
-//       price,
-//       photoUrl,
-//       color,
-//       size,
-//       category,
-//     } = req.body || {};
-
-//     // validate required fields
-//     if (
-//       !productName ||
-//       !description ||
-//       price == null ||
-//       !photoUrl ||
-//       !color ||
-//       !size ||
-//       !category
-//     ) {
-//       return res.status(400).json({ error: "Missing required fields." });
-//     }
-
-//     const payload = {
-//       productId: productId?.trim(),
-//       productName: String(productName).trim(),
-//       description: String(description).trim(),
-//       price: Number(price),
-//       photoUrl: String(photoUrl).trim(),
-//       color: String(color).trim(),
-//       size: String(size).trim(),
-//       category: String(category).trim(),
-//     };
-
-//     const doc = await Product.create(payload);
-//     res.status(201).json(doc);
-//   } catch (err) {
-//     console.error("createProduct error:", err);
-//     if (err && err.code === 11000) {
-//       // duplicate key (likely productId)
-//       return res.status(409).json({ error: "productId must be unique" });
-//     }
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }
-
-// PATCH /api/products/:id   (admin only)
-// id can be productId or Mongo _id
 
 async function listProducts(req, res) {
   try {
-    const { q, category, color, size, minPrice, maxPrice, sort = "-createdAt", page = "1", limit = "20" } = req.query;
+    const {
+      q, category, color, size,
+      minPrice, maxPrice,
+      stock,             // optional exact match
+      minStock, maxStock,// optional range
+      sort = "-createdAt", page = "1", limit = "20"
+    } = req.query;
 
     const filter = {};
     if (q) filter.productName = new RegExp(String(q), "i");
     if (category) filter.category = String(category).trim();
-
-    // match when array contains a value
     if (color) filter.colors = { $in: [String(color).trim()] };
     if (size)  filter.sizes  = { $in: [String(size).trim()] };
 
@@ -79,15 +33,21 @@ async function listProducts(req, res) {
       if (maxPrice != null) filter.price.$lte = Number(maxPrice);
     }
 
+    // ✅ stock filter (don’t set when undefined)
+    if (stock != null && stock !== "") {
+      filter.stock = Number(stock);
+    } else if (minStock != null || maxStock != null) {
+      filter.stock = {};
+      if (minStock != null) filter.stock.$gte = Number(minStock);
+      if (maxStock != null) filter.stock.$lte = Number(maxStock);
+    }
+
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
 
     const [docs, total] = await Promise.all([
-      Product.find(filter)
-        .sort(String(sort))
-        .limit(limitNum)
-        .skip((pageNum - 1) * limitNum)
-        .lean(),
+      Product.find(filter).sort(String(sort))
+        .limit(limitNum).skip((pageNum - 1) * limitNum).lean(),
       Product.countDocuments(filter),
     ]);
 
@@ -102,17 +62,12 @@ async function listProducts(req, res) {
 
 
 
+
 async function createProduct(req, res) {
   try {
     const {
-      productId,
-      productName,
-      description,
-      price,
-      photoUrl,
-      colors,      // array or comma string
-      sizes,       // array or comma string
-      category,
+      productId, productName, description, price, photoUrl,
+      colors, sizes, category, stock
     } = req.body || {};
 
     if (!productName || !description || price == null || !photoUrl || !category) {
@@ -125,9 +80,12 @@ async function createProduct(req, res) {
       description: String(description).trim(),
       price: Number(price),
       photoUrl: String(photoUrl).trim(),
-      colors: toStringArray(colors),   // <-- arrays
-      sizes: toStringArray(sizes),     // <-- arrays
+      colors: toStringArray(colors),
+      sizes:  toStringArray(sizes),
       category: String(category).trim(),
+
+      // ✅ NEW
+      stock: Math.max(0, Number(stock ?? 0)),
     };
 
     if (payload.colors.length === 0 || payload.sizes.length === 0) {
@@ -147,74 +105,14 @@ async function createProduct(req, res) {
 
 
 
-
-
-// async function updateProductById(req, res) {
-//   try {
-//     const id = req.params.id;
-
-//     // Only allow these fields to be patched; productId is immutable by default
-//     const allowed = [
-//       "productName",
-//       "description",
-//       "price",
-//       "photoUrl",
-//       "color",
-//       "size",
-//       "category",
-//     ];
-//     const patch = {};
-
-//     for (const k of allowed) {
-//       if (req.body[k] !== undefined) patch[k] = req.body[k];
-//     }
-
-//     // normalize
-//     if (patch.productName != null) patch.productName = String(patch.productName).trim();
-//     if (patch.description != null) patch.description = String(patch.description).trim();
-//     if (patch.price != null) patch.price = Number(patch.price);
-//     if (patch.photoUrl != null) patch.photoUrl = String(patch.photoUrl).trim();
-//     if (patch.color != null) patch.color = String(patch.color).trim();
-//     if (patch.size != null) patch.size = String(patch.size).trim();
-//     if (patch.category != null) patch.category = String(patch.category).trim();
-
-//     // find target
-//     const byProductId = await Product.findOneAndUpdate(
-//       { productId: id },
-//       { $set: patch },
-//       { new: true, runValidators: true }
-//     ).lean();
-
-//     if (byProductId) return res.json(byProductId);
-
-//     // fallback _id
-//     let byMongoId = null;
-//     try {
-//       byMongoId = await Product.findByIdAndUpdate(
-//         id,
-//         { $set: patch },
-//         { new: true, runValidators: true }
-//       ).lean();
-//     } catch (_) {}
-
-//     if (!byMongoId) return res.status(404).json({ error: "Not found" });
-//     res.json(byMongoId);
-//   } catch (err) {
-//     console.error("updateProductById error:", err);
-//     if (err && err.code === 11000) {
-//       return res.status(409).json({ error: "Duplicate key" });
-//     }
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }
-
-// DELETE /api/products/:id   (admin only)
-// id can be productId or Mongo _id
-
 async function updateProductById(req, res) {
   try {
     const patch = {};
-    const allowed = ["productId","productName","description","price","photoUrl","colors","sizes","category"];
+    const allowed = [
+      "productId","productName","description","price",
+      "photoUrl","colors","sizes","category",
+      "stock" // ✅ NEW
+    ];
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
 
     if (patch.productName != null) patch.productName = String(patch.productName).trim();
@@ -222,14 +120,12 @@ async function updateProductById(req, res) {
     if (patch.price != null) patch.price = Number(patch.price);
     if (patch.photoUrl != null) patch.photoUrl = String(patch.photoUrl).trim();
     if (patch.category != null) patch.category = String(patch.category).trim();
-
     if ("colors" in patch) patch.colors = toStringArray(patch.colors);
     if ("sizes"  in patch) patch.sizes  = toStringArray(patch.sizes);
+    if (patch.stock != null) patch.stock = Math.max(0, Number(patch.stock)); // ✅ NEW
 
     const doc = await Product.findByIdAndUpdate(
-      req.params.id,
-      { $set: patch },
-      { new: true, runValidators: true }
+      req.params.id, { $set: patch }, { new: true, runValidators: true }
     ).lean();
 
     if (!doc) return res.status(404).json({ error: "Not found" });
@@ -242,7 +138,6 @@ async function updateProductById(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
-
 
 async function deleteProductById(req, res) {
   try {
