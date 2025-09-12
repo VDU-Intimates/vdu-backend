@@ -2,32 +2,71 @@
 const Product = require("../models/allproduct-model");
 
 
+
 // GET /api/products?q=&category=&color=&size=&minPrice=&maxPrice=&sort=&page=&limit=
+// async function listProducts(req, res) {
+//   try {
+//     const {
+//       q,
+//       category,
+//       color,
+//       size,
+//       minPrice,
+//       maxPrice,
+//       sort = "-createdAt",
+//       page = "1",
+//       limit = "20",
+//     } = req.query;
+
+//     const filter = {};
+
+//     // text search on name & description
+//     if (q) {
+//       const rx = new RegExp(String(q), "i");
+//       filter.$or = [{ productName: rx }, { description: rx }];
+//     }
+
+//     if (category) filter.category = new RegExp(String(category), "i");
+//     if (color) filter.color = new RegExp(String(color), "i");
+//     if (size) filter.size = new RegExp(String(size), "i");
+
+//     if (minPrice != null || maxPrice != null) {
+//       filter.price = {};
+//       if (minPrice != null) filter.price.$gte = Number(minPrice);
+//       if (maxPrice != null) filter.price.$lte = Number(maxPrice);
+//     }
+
+//     const pageNum = Math.max(1, Number(page) || 1);
+//     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+
+//     const [docs, total] = await Promise.all([
+//       Product.find(filter)
+//         .sort(String(sort))
+//         .limit(limitNum)
+//         .skip((pageNum - 1) * limitNum)
+//         .lean(),
+//       Product.countDocuments(filter),
+//     ]);
+
+//     res.json({ data: docs, total, page: pageNum, limit: limitNum });
+//   } catch (err) {
+//     console.error("listProducts error:", err);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// }
+
+
 async function listProducts(req, res) {
   try {
-    const {
-      q,
-      category,
-      color,
-      size,
-      minPrice,
-      maxPrice,
-      sort = "-createdAt",
-      page = "1",
-      limit = "20",
-    } = req.query;
+    const { q, category, color, size, minPrice, maxPrice, sort = "-createdAt", page = "1", limit = "20" } = req.query;
 
     const filter = {};
+    if (q) filter.productName = new RegExp(String(q), "i");
+    if (category) filter.category = String(category).trim();
 
-    // text search on name & description
-    if (q) {
-      const rx = new RegExp(String(q), "i");
-      filter.$or = [{ productName: rx }, { description: rx }];
-    }
-
-    if (category) filter.category = new RegExp(String(category), "i");
-    if (color) filter.color = new RegExp(String(color), "i");
-    if (size) filter.size = new RegExp(String(size), "i");
+    // match when array contains a value
+    if (color) filter.colors = { $in: [String(color).trim()] };
+    if (size)  filter.sizes  = { $in: [String(size).trim()] };
 
     if (minPrice != null || maxPrice != null) {
       filter.price = {};
@@ -85,7 +124,4 @@ async function getProductById(req, res) {
 module.exports = {
   listProducts,
   getProductById,
-  // createProduct,
-  // updateProductById,
-  // deleteProductById,
 };

@@ -8,7 +8,7 @@ const User = require("../models/user-model");
 // helper: sign JWT (1 hour)
 function signAccessToken(user) {
   return jwt.sign(
-    { user: { id: user._id.toString(), email: user.email, role: user.role } },
+    { user: { id: user._id.toString(),userId:user.userId, email: user.email, role: user.role } },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: "1h" }
   );
@@ -36,8 +36,8 @@ const registerUser = asyncHandler(async (req, res) => {
     password:  passwordHash,
     address:   address ? String(address).trim() : undefined,
     contact:   contact ? String(contact).trim() : undefined,
-    photoURL:  photoURL,
-    role:      role
+    photoURL:  photoURL ? photoURL : null,
+    role:      role ? role.trim() : "Customer",
   });
 
   const token = signAccessToken(user);

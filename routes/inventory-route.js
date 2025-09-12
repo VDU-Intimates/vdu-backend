@@ -25,11 +25,7 @@ function requireRole(role) {
 
 const router = express.Router();
 
-// Public
 router.get("/", listProducts);
-router.get("/:id", getProductById);
-
-// // Admin-only
 router.post("/", validateToken, requireRole("Admin"), createProduct);
 router.patch("/:id", validateToken, requireRole("Admin"), updateProductById);
 router.delete("/:id", validateToken, requireRole("Admin"), deleteProductById);
