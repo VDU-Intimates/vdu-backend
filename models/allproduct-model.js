@@ -30,18 +30,19 @@ const ProductSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    color: {
-      type: String,
+    colors: {
+      type: [String],
       required: true,
-      trim: true,
+      validate: v => Array.isArray(v) && v.length > 0,
     },
-    size: {
-      type: String,
+    sizes: {
+      type: [String],
       required: true,
-      trim: true,
+      validate: v => Array.isArray(v) && v.length > 0,
     },
     category: {
       type: String,
+      enum: ['T-Shirt', 'Intimate'],
       required: true,
       trim: true,
     },
