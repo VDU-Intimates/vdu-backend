@@ -17,7 +17,7 @@ router.post("/register", registerUser);
 router.post("/login", loginUser);
 
 // Me (protected)
-router.get("/me", validateToken, getUser);
+router.get("/get-user", validateToken, getUser);
 router.patch("/me", validateToken, updateUser);
 
 module.exports = router;
