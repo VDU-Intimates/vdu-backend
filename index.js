@@ -8,7 +8,8 @@ const userRoutes = require("./routes/user-route");
 const productRouter = require("./routes/allproduct-router");
 const BulkOrderRouter = require("./routes/bulk-order-route");
 const DesignRouter = require("./routes/design-route");
-const inventoryRouter = require("./routes/inventory-route")
+const inventoryRouter = require("./routes/inventory-route");
+const cartRoutes = require("./routes/cart-route");
 
 dotenv.config(); // must be before using process.env
 
@@ -28,6 +29,7 @@ app.use("/api/auth", userRoutes);
 app.use("/api/products", productRouter);
 app.use("/api/selections", BulkOrderRouter);
 app.use("/api/designs",DesignRouter );
+app.use("/api/cart", cartRoutes);
 
 mongoose.connect(process.env.MONGODB_URI)
         .then(() => console.log("MongoDB connected"))

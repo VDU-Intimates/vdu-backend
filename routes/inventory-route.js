@@ -2,7 +2,6 @@
 const express = require("express");
 const {
   listProducts,
-  getProductById,
   createProduct,
   updateProductById,
   deleteProductById,
