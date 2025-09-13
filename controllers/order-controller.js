@@ -35,6 +35,8 @@ const getOrderInvoice = async (req, res) => {
           orderId: order.orderId,
           date: order.date,
           totalAmount: order.totalAmount,
+          discount: order.discount,
+          deliverFee: order.deliverFee,
           items: orderItems.map((item) => ({
             name: item.name,
             quantity: item.quantity,
