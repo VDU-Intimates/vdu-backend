@@ -8,7 +8,7 @@ const User = require("../models/user-model");
 // helper: sign JWT (1 hour)
 function signAccessToken(user) {
   return jwt.sign(
-    { user: { id: user._id.toString(), email: user.email } },
+    { user: { id: user._id.toString(),userId:user.userId, email: user.email, role: user.role } },
     process.env.ACCESS_TOKEN_SECRET,
     { expiresIn: "1h" }
   );
@@ -17,7 +17,7 @@ function signAccessToken(user) {
 // POST /register
 // body: { firstName, lastName, email, phone?, address?, password }
 const registerUser = asyncHandler(async (req, res) => {
-  const { fName, lName, email, password, address, contact, photoURL } = req.body;
+  const { fName, lName, email, password, address, contact, photoURL, role } = req.body;
 
   if (!fName || !lName || !email || !password) {
     return res.status(400).json({ message: "Missing required fields." });
@@ -36,7 +36,8 @@ const registerUser = asyncHandler(async (req, res) => {
     password:  passwordHash,
     address:   address ? String(address).trim() : undefined,
     contact:   contact ? String(contact).trim() : undefined,
-    photoURL:  photoURL
+    photoURL:  photoURL ? photoURL : null,
+    role:      role ? role.trim() : "Customer",
   });
 
   const token = signAccessToken(user);
@@ -49,6 +50,7 @@ const registerUser = asyncHandler(async (req, res) => {
     password:  user.passwordHash,
     address:   user.address || null,
     contact:   user.contact || null,
+    role:      user.role,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
