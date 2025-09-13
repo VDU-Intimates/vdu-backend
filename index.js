@@ -6,6 +6,7 @@ const cors = require("cors"); // Add this line
 const orderRoutes = require("./routes/order-routes");
 const userRoutes = require("./routes/user-route");
 const contactRoutes = require("./routes/contact-routes");
+const deliveryRoutes = require("./routes/delivery-routes");
 
 dotenv.config(); // must be before using process.env
 
@@ -30,6 +31,7 @@ mongoose
 app.use("/api/orders", orderRoutes);
 app.use("/api/auth", userRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/deliveries", deliveryRoutes);
 
 // Start server
 app.listen(PORT, () => {
