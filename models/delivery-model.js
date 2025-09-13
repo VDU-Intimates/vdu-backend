@@ -6,8 +6,8 @@ const deliverySchema = new mongoose.Schema({
         required: true,
         unique: true
     },
-    oderId: {
-        tytype: String,
+    orderId: {
+        type: String,
         required: true,
         unique: true,
         ref: 'Order'
