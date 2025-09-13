@@ -1,17 +1,39 @@
 const mongoose = require("mongoose");
 
+function generateOrderId() {
+    const randomDigits = Math.floor(100000 + Math.random() * 900000);
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const datePart = `${year}${month}${day}`;
+    return `ORD-${datePart}-${randomDigits}`;
+}
+
 const orderSchema = new mongoose.Schema({
     orderId: {
         type: String,
         required: true,
         unique: true,
-        default: generateOrderId()
+        default: generateOrderId
     },
     userId: {
         type: String,
         required: true,
-        unique: true,
         ref: 'User'
+    },
+    subTotal: {
+        type: Number,
+        required: true
+    },
+    deliverFee: {
+        type: Number,
+        required: true
+    },
+    discount: {
+        type: Number,
+        required: true,
+        default: 0
     },
     totalAmount: {
         type: Number,
@@ -32,21 +54,9 @@ const orderSchema = new mongoose.Schema({
     },
 });
 
-function generateOrderId() {
-    const randomDigits = Math.floor(100000 + Math.random() * 900000);
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const datePart = `${year}${month}${day}`;
-    return `ORD-${datePart}-${randomDigits}`;
-}
-
 orderSchema.pre('save', function (next) {
-    if (this.quantity > 500) {
+    if (this.quantity && this.quantity > 500) {
         this.isBulk = true;
-    } else {
-        this.isBulk = false;
     }
     next();
 });
