@@ -1,8 +1,7 @@
 const dotenv = require("dotenv");
 const express = require("express");
 const mongoose = require("mongoose");
-
-const cors = require("cors")
+const cors = require("cors");
 
 const orderRoutes = require("./routes/order-routes");
 const userRoutes = require("./routes/user-route");
@@ -17,10 +16,9 @@ const contactRoutes = require("./routes/contact-routes");
 dotenv.config(); // must be before using process.env
 
 const app = express();
-app.use(cors({ origin: "http://localhost:3000" }));
-const port = 5000;
-app.use(express.json({ limit: "20mb" }));          // <-- IMPORTANT for data URLs
-app.use(express.urlencoded({ extended: true, limit: "20mb" }));
+
+// Use environment variable or fallback to 5000
+const PORT = process.env.PORT || 5000;
 
 // Add CORS middleware BEFORE other middleware
 app.use(cors({
@@ -28,18 +26,20 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
-
-app.use("/api/admin/products",inventoryRouter)
+// Routes
+app.use("/api/admin/products", inventoryRouter);
 app.use("/api/auth", userRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/deliveries", deliveryRoutes);
-app.use("/api/products/admin",inventoryRouter)
+app.use("/api/products/admin", inventoryRouter);
 app.use("/api/products", productRouter);
 app.use("/api/selections", BulkOrderRouter);
-app.use("/api/designs",DesignRouter );
+app.use("/api/designs", DesignRouter);
 app.use("/api/cart", cartRoutes);
+app.use("/api/orders", orderRoutes);
 
 // Connect MongoDB
 mongoose
@@ -51,5 +51,3 @@ mongoose
 app.listen(PORT, () => {
   console.log(`Server listening at http://localhost:${PORT}`);
 });
-
-

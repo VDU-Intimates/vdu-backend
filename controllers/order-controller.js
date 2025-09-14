@@ -47,40 +47,46 @@ const placeOrder = async (req, res) => {
     }
 }
 
-const getOrderInvoice = async (req, res) => {
+const getOrderInvoiceById = async (req, res) => {
   try {
-    const orders = await Order.find();
-    const ordersWithItems = await Promise.all(
-      orders.map(async (order) => {
-        const orderItems = await OrderItem.find({ orderId: order._id });
-        return {
-          orderId: order.orderId,
-          _id: order._id,
-          userId: order.userId,
-          date: order.date,
-          subTotal: order.subTotal,
-          discount: order.discount,
-          totalAmount: order.totalAmount,
-          deliveryFee: order.deliverFee,
-          items: orderItems.map((item) => ({
-            _id: item._id,
-            name: item.name,
-            productId: item.productId,
-            customisedProductId: item.customisedProductId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-          })),
-        };
-      })
-    );
-    res.json(ordersWithItems);
+    const { id } = req.params;
+
+    // Find order by ID
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Fetch items linked to that order
+    const orderItems = await OrderItem.find({ orderId: order._id });
+
+    const orderWithItems = {
+      orderId: order.orderId,
+      _id: order._id,
+      userId: order.userId,
+      date: order.date,
+      subTotal: order.subTotal,
+      discount: order.discount,
+      totalAmount: order.totalAmount,
+      deliveryFee: order.deliveryFee,
+      items: orderItems.map((item) => ({
+        _id: item._id,
+        name: item.name,
+        productId: item.productId,
+        customisedProductId: item.customisedProductId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+    };
+
+    res.json(orderWithItems);
   } catch (error) {
-    console.error("Error fetching orders:", error);
+    console.error("Error fetching order by ID:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
 module.exports = {
     placeOrder,
-    getOrderInvoice
+    getOrderInvoiceById
 };
