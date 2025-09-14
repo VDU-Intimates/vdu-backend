@@ -24,7 +24,7 @@ app.listen(port, () => {
   console.log(`Server listening at port ${port}`);
 });
 
-app.use("/api/products/admin",inventoryRouter)
+app.use("/api/admin/products",inventoryRouter)
 app.use("/api/auth", userRoutes);
 app.use("/api/products", productRouter);
 app.use("/api/selections", BulkOrderRouter);
