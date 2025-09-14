@@ -48,8 +48,8 @@ mongoose
   .catch((err) => console.error("MongoDB error:", err));
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`Server listening at http://localhost:${PORT}`);
+app.listen(port, () => {
+  console.log(`Server listening at http://localhost:${port}`);
 });
 
 
