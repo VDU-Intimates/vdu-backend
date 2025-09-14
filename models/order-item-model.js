@@ -1,16 +1,14 @@
 const mongoose = require("mongoose");
 
 const orderItemSchema = new mongoose.Schema({
-    orderItemId: {
-        type: String,
-        required: true,
-        unique: true,
-        // default: generateOrderItemId()
-    },
     orderId: {
         type: String,
         required: true,
         ref: 'Order'
+    },
+    name: {
+        type: String,
+        required: true
     },
     productId: {
         type: String,
@@ -30,6 +28,8 @@ const orderItemSchema = new mongoose.Schema({
         required: true
     }
 })
+
+module.exports = mongoose.model("OrderItem", orderItemSchema);
 
 // function generateOrderItemId() {
 

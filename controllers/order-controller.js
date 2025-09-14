@@ -1,18 +1,45 @@
 const Order = require('../models/order-model');
+const OrderItem = require('../models/order-item-model');
 
 const placeOrder = async (req, res) => {
-    const { userId, totalAmount, date, quantity, isBulk } = req.body;
+    // Get userId from JWT token (set by auth middleware)
+    const userId = req.user?.id;
+    if (!userId) {
+        console.log("req.user:", req.user); // Debug log
+        return res.status(401).json({ message: "User is not authorized" });
+    }
+    
+    console.log("Authenticated user ID:", userId); // Success log
+    
+    const { subTotal, deliverFee, discount, totalAmount,
+             date, quantity, isBulk, items } = req.body;
 
     try {
         const newOrder = new Order({
             userId,
+            subTotal,
+            deliverFee,
+            discount,
             totalAmount,
             date,
-            quantity,
             orderStatus: 'Pending',
-            isBulk
+            isBulk: isBulk || (quantity > 500)
         });
         const savedOrder = await newOrder.save();
+
+        if (Array.isArray(items) && items.length > 0) {
+            const orderItems = items.map(item => ({
+                orderId: savedOrder.orderId,
+                name: item.name,
+                productId: item.productId,
+                customisedProductId: item.customisedProductId || null,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice
+            }));
+
+            await OrderItem.insertMany(orderItems);
+        }
+
         res.status(201).json(savedOrder);
     } catch (error) {
         console.error("Error placing order:", error);
@@ -20,6 +47,37 @@ const placeOrder = async (req, res) => {
     }
 }
 
+const getOrderInvoice = async (req, res) => {
+    try {
+    // Find all orders
+    const orders = await Order.find();
+
+    // Fetch items for each order
+    const ordersWithItems = await Promise.all(
+      orders.map(async (order) => {
+        const orderItems = await OrderItem.find({ orderId: order.orderId });
+
+        return {
+          orderId: order.orderId,
+          date: order.date,
+          totalAmount: order.totalAmount,
+          items: orderItems.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+          })),
+        };
+      })
+    );
+
+    res.json(ordersWithItems);
+  } catch (error) {
+    console.error("Error fetching orders:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+}
+
 module.exports = {
-    placeOrder
+    placeOrder,
+    getOrderInvoice
 };
