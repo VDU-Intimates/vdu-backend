@@ -30,10 +30,8 @@ app.use(cors({
 
 app.use(express.json());
 
-const PORT = process.env.PORT || 5000;
 
-
-app.use("/api/orders", orderRoutes);
+app.use("/api/admin/products",inventoryRouter)
 app.use("/api/auth", userRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/deliveries", deliveryRoutes);
