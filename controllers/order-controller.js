@@ -2,8 +2,17 @@ const Order = require('../models/order-model');
 const OrderItem = require('../models/order-item-model');
 
 const placeOrder = async (req, res) => {
-    const { userId, subTotal, deliverFee, discount, totalAmount, 
-            date, quantity, isBulk, items } = req.body;
+    // Get userId from JWT token (set by auth middleware)
+    const userId = req.user?.id;
+    if (!userId) {
+        console.log("req.user:", req.user); // Debug log
+        return res.status(401).json({ message: "User is not authorized" });
+    }
+    
+    console.log("Authenticated user ID:", userId); // Success log
+    
+    const { subTotal, deliverFee, discount, totalAmount,
+             date, quantity, isBulk, items } = req.body;
 
     try {
         const newOrder = new Order({
