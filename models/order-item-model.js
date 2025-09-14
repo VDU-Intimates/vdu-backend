@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const orderItemSchema = new mongoose.Schema({
     orderId: {
-        type: String,
+        type: mongoose.Schema.Types.ObjectId, // Use mongoose.Schema.Types.ObjectId
         required: true,
         ref: 'Order'
     },
@@ -27,10 +27,6 @@ const orderItemSchema = new mongoose.Schema({
         type: Number,
         required: true
     }
-})
+});
 
 module.exports = mongoose.model("OrderItem", orderItemSchema);
-
-// function generateOrderItemId() {
-
-// }
