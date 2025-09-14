@@ -11,6 +11,8 @@ const BulkOrderRouter = require("./routes/bulk-order-route");
 const DesignRouter = require("./routes/design-route");
 const inventoryRouter = require("./routes/inventory-route");
 const cartRoutes = require("./routes/cart-route");
+const deliveryRoutes = require("./routes/delivery-routes");
+const contactRoutes = require("./routes/contact-routes");
 
 dotenv.config(); // must be before using process.env
 
@@ -46,10 +48,10 @@ mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB error:", err));
-  
+
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server listening at http://localhost:${PORT}`);
+  console.log(`Server listening at http://localhost:${PORT}`);
 });
 
 
