@@ -13,7 +13,6 @@ const inventoryRouter = require("./routes/inventory-route");
 const cartRoutes = require("./routes/cart-route");
 const deliveryRoutes = require("./routes/delivery-routes");
 const contactRoutes = require("./routes/contact-routes");
-
 dotenv.config(); // must be before using process.env
 
 const app = express();
@@ -40,6 +39,7 @@ app.use("/api/products", productRouter);
 app.use("/api/selections", BulkOrderRouter);
 app.use("/api/designs",DesignRouter );
 app.use("/api/cart", cartRoutes);
+app.use("/api/reports", userRoutes);
 
 // Connect MongoDB
 mongoose

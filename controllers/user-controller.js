@@ -1,10 +1,14 @@
 // controllers/user-controller.js
 const asyncHandler = require("express-async-handler");
+const PDFDocument = require("pdfkit");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto"); // <- import crypto
 const User = require("../models/user-model");
 const nodemailer = require('nodemailer');
+const Order = require("../models/order-model");          // <-- change if different
+const Design = require("../models/design-model");        // <-- change if different
+const BulkOrder = require("../models/bulk-order-model"); 
 require('dotenv').config();
 
 const otpStore = new Map();
@@ -31,7 +35,7 @@ function generateOtp() {
     return crypto.randomInt(100000, 1000000).toString(); // 100000..999999
 }
 
-// placeholder: replace with your email/SMS sending logic
+//OTP through Email
 async function sendOtpToUser({ email, name, code, expiresInMinutes = 2 }) {
 
   const plainText = `
@@ -323,13 +327,178 @@ const updateUser = asyncHandler(async (req, res) => {
 
   res.json({ user: safeUser });
 });
+const deleteUser = asyncHandler(async (req, res) => {
+  const userId = req.user?.id; // set by validateToken middleware
+  if (!userId) return res.status(401).json({ message: "Unauthorized." });
+
+  // (Optional) clean up child data owned by this user
+  await Promise.all([
+    Order.deleteMany({ userId }),
+    Design.deleteMany({ userId }),
+    BulkOrder.deleteMany({ userId })
+  ]);
+
+  const result = await User.findByIdAndDelete(userId);
+  if (!result) return res.status(404).json({ message: "User not found." });
+
+  // JWTs are stateless; just tell client to remove its token
+  return res.json({ message: "Account deleted successfully." });
+});
+
+
+//Report Generation Function
+// GET /api/reports/account-stats
+// Returns basic profile + 3 counts
+const getAccountStats = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  const user = await User.findById(userId).lean();
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const [orders, customizations, bulkOrders] = await Promise.all([
+    Order.countDocuments({ userId }),
+    Design.countDocuments({ userId }),
+    BulkOrder.countDocuments({ userId }),
+  ]);
+
+  // Minimal safe profile fields
+  const profile = {
+    fName: user.fName,
+    lName: user.lName,
+    email: user.email,
+    contact: user.contact || null,
+    address: user.address || null,
+    role: user.role || "Customer",
+    createdAt: user.createdAt,
+  };
+
+  res.json({
+    profile,
+    counts: {
+      orders,
+      customizations,
+      bulkOrders,
+    },
+  });
+});
+
+// GET /api/reports/account-summary
+// Streams a PDF with the same info
+const downloadAccountSummaryPdf = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  const user = await User.findById(userId).lean();
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const [orders, customizations, bulkOrders] = await Promise.all([
+    Order.countDocuments({ userId }),
+    Design.countDocuments({ userId }),
+    BulkOrder.countDocuments({ userId }),
+  ]);
+
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="VDU_Account_Summary_${user.fName || "User"}.pdf"`
+  );
+
+  doc.pipe(res);
+
+  // --- Background color block (header area) ---
+  doc.rect(0, 0, doc.page.width, 90).fill("#2f432a");
+  doc.fillColor("#eadfcd");
+
+  // --- Title ---
+  doc.image("public/icons/logo.jpg", 40, 15, { width: 60, height: 60 })
+  doc
+    .fontSize(22)
+    .font("Helvetica-Bold")
+    .text("VDU Intimates", 0, 25, { align: "center" });
+  doc
+    .fontSize(14)
+    .font("Helvetica")
+    .text("Account Summary Report",0,70, { align: "center" });
+    
+    
+  // --- reset colors for body ---
+  doc.moveDown(2);
+  doc.fillColor("black");
+
+  // --- Section: Profile Details ---
+  doc.image("public/icons/profile-icon.png", 60, doc.y - 4, { width: 18, height: 18 });
+  doc.fontSize(16).fillColor("#2f432a").text("Profile Details", 82, doc.y - 2, { continued: false });
+  doc.moveDown(0.8);
+
+  const profileY = doc.y;
+  doc
+    .fontSize(13)
+    .fillColor("#000")
+    .text(`Name       : ${user.fName || ""} ${user.lName || ""}`).moveDown(1)
+    .text(`Email      : ${user.email}`).moveDown(1)
+    .text(`Contact    : ${user.contact || "-"}`).moveDown(1)
+    .text(`Address    : ${user.address || "-"}`).moveDown(1)
+    .text(`Role       : ${user.role || "Customer"}`).moveDown(1)
+    .text(`Joined On  : ${new Date(user.createdAt).toLocaleString()}`).moveDown(1)
+    .moveDown(1.5);
+
+  // --- Divider line ---
+  doc
+    .moveTo(50, doc.y)
+    .lineTo(doc.page.width - 50, doc.y)
+    .strokeColor("#F3C86A")
+    .stroke()
+    .moveDown(1);
+
+  // --- Section: Activity Summary ---
+  doc.moveDown(1)
+  doc.image("public/icons/bar-chart-icon.png", 60, doc.y - 7, { width: 18, height: 18 });
+  doc.fontSize(16).fillColor("#2f432a").text("Activity Summary", 82, doc.y - 2, { continued: false });
+  doc.moveDown(1)
+
+  doc
+    .fontSize(13)
+    .fillColor("#000")
+    .text(`Orders Placed     : ${orders}`).moveDown(1)
+    .text(`Customizations    : ${customizations}`).moveDown(1)
+    .text(`Bulk Orders       : ${bulkOrders}`).moveDown(1)
+    .moveDown(1.5);
+
+  // --- Divider line ---
+  doc
+    .moveTo(50, doc.y)
+    .lineTo(doc.page.width - 50, doc.y)
+    .strokeColor("#ddd")
+    .stroke()
+    .moveDown(1);
+
+  // --- Footer ---
+  doc
+    .fontSize(10)
+    .fillColor("#555")
+    .text("Generated by VDU Intimates", 50, doc.page.height - 75, {
+      align: "left",
+    })
+    .text(
+      `Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+      { align: "right" }
+    );
+
+  doc.end();
+});
 
 module.exports = {
   registerUser,
   loginUser,
-  requestOtp,     // <- exported for routing
+  requestOtp, 
   getUser,
+  deleteUser,
   updateUser,
   verifyOtp,
-  reSendOtp
+  reSendOtp,
+  getAccountStats,
+  downloadAccountSummaryPdf,
 };
