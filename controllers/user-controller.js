@@ -53,7 +53,7 @@ async function sendOtpToUser({ email, name, code, expiresInMinutes = 2 }) {
 
   try {
     if (!code || !email || !name) {
-      return res.status(400).json({ message: 'Name, Email, and OTP code are required' });
+      throw new Error('Name, email and OTP code are required');
     }
 
     const mailOptions = {
@@ -95,7 +95,7 @@ async function sendOtpToUser({ email, name, code, expiresInMinutes = 2 }) {
     console.log(`[OTP] sent to ${email}: ${code}`);
   } catch (error) {
     console.error('API error:', error);
-    res.status(500).json({ message: 'Server Error', error: error.message });
+    throw new Error(error);
   }
 }
 
@@ -117,7 +117,7 @@ const reSendOtp = asyncHandler(async(req,res) => {
   try {
     await sendOtpToUser({ email: user.email, name: `${user.fName || ""} ${user.lName || ""}`.trim(), code: otp });
   } catch (error) {
-    console.error("Failed to send OTP:", err);
+    console.error("Failed to send OTP:", error);
       // optionally clear the OTP if send fails
       otpStore.delete(user.email);
   }
