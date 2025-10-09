@@ -66,8 +66,8 @@ async function listProducts(req, res) {
 async function createProduct(req, res) {
   try {
     const {
-      productId, productName, description, price, photoUrl,
-      colors, sizes, category, stock
+      productId, productName, description, price, stock, photoUrl,
+      colors, sizes, category,
     } = req.body || {};
 
     if (!productName || !description || price == null || !photoUrl || !category) {
@@ -79,13 +79,14 @@ async function createProduct(req, res) {
       productName: String(productName).trim(),
       description: String(description).trim(),
       price: Number(price),
+      // stock: Math.max(0, Number(stock ?? 0)),
+      
       photoUrl: String(photoUrl).trim(),
       colors: toStringArray(colors),
       sizes:  toStringArray(sizes),
       category: String(category).trim(),
-
+      stock:stock,
       // ✅ NEW
-      stock: Math.max(0, Number(stock ?? 0)),
     };
 
     if (payload.colors.length === 0 || payload.sizes.length === 0) {
@@ -122,7 +123,8 @@ async function updateProductById(req, res) {
     if (patch.category != null) patch.category = String(patch.category).trim();
     if ("colors" in patch) patch.colors = toStringArray(patch.colors);
     if ("sizes"  in patch) patch.sizes  = toStringArray(patch.sizes);
-    if (patch.stock != null) patch.stock = Math.max(0, Number(patch.stock)); // ✅ NEW
+    // if (patch.stock != null) patch.stock = Math.max(0, Number(patch.stock)); // ✅ NEW
+    if(patch.stock != null) patch.stock = patch.stock;
 
     const doc = await Product.findByIdAndUpdate(
       req.params.id, { $set: patch }, { new: true, runValidators: true }
@@ -158,9 +160,92 @@ async function deleteProductById(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
+
+
+// controllers/inventory-controller.js  (same file you showed)
+// ...existing imports & helpers (Product, toStringArray, etc.)
+
+function buildProductFilter(qs = {}) {
+  const {
+    q, category, color, size,
+    minPrice, maxPrice,
+    stock, minStock, maxStock
+  } = qs;
+
+  const filter = {};
+  if (q) filter.productName = new RegExp(String(q), "i");
+  if (category) filter.category = String(category).trim();
+  if (color) filter.colors = { $in: [String(color).trim()] };
+  if (size)  filter.sizes  = { $in: [String(size).trim()] };
+
+  if (minPrice != null || maxPrice != null) {
+    filter.price = {};
+    if (minPrice != null) filter.price.$gte = Number(minPrice);
+    if (maxPrice != null) filter.price.$lte = Number(maxPrice);
+  }
+
+  if (stock != null && stock !== "") {
+    filter.stock = Number(stock);
+  } else if (minStock != null || maxStock != null) {
+    filter.stock = {};
+    if (minStock != null) filter.stock.$gte = Number(minStock);
+    if (maxStock != null) filter.stock.$lte = Number(maxStock);
+  }
+
+  return filter;
+}
+
+// --- New: CSV Export ---
+function csvEscape(val) {
+  if (val == null) return "";
+  const s = String(val);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+async function exportProductsCsv(req, res) {
+  try {
+    const filter = buildProductFilter(req.query);
+    const sort = String(req.query.sort || "-createdAt");
+
+    const docs = await Product.find(filter).sort(sort).lean();
+
+    // columns you want in the report
+    const headers = [
+      "Product ID", "Product Name", "Category", "Price",
+      "Stock", "Colors", "Sizes", "Description", "Created At"
+    ];
+
+    const rows = docs.map(p => ([
+      p.productId || "",
+      p.productName || "",
+      p.category || "",
+      (p.price ?? "").toString(),
+      (p.stock ?? "").toString(),
+      Array.isArray(p.colors) ? p.colors.join("|") : "",
+      Array.isArray(p.sizes) ? p.sizes.join("|") : "",
+      p.description || "",
+      p.createdAt ? new Date(p.createdAt).toISOString() : ""
+    ]));
+
+    // Build CSV string with BOM for Excel friendliness
+    let csv = "\uFEFF" + headers.map(csvEscape).join(",") + "\n";
+    for (const r of rows) csv += r.map(csvEscape).join(",") + "\n";
+
+    const dt = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="inventory-${dt}.csv"`);
+    return res.status(200).send(csv);
+  } catch (err) {
+    console.error("exportProductsCsv error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+
+// export along with your existing functions
 module.exports = {
   listProducts,
   createProduct,
   updateProductById,
   deleteProductById,
+  exportProductsCsv, // <---
 };
