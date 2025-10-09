@@ -5,6 +5,7 @@ const {
   loginUser,
   getUser,
   updateUser,
+  getUserById
 } = require("../controllers/user-controller");
 
 // Your JWT middleware (what you called validate-token-handler.js)
@@ -19,5 +20,7 @@ router.post("/login", loginUser);
 // Me (protected)
 router.get("/me", validateToken, getUser);
 router.patch("/me", validateToken, updateUser);
+
+router.get("/:id", validateToken, getUserById); 
 
 module.exports = router;

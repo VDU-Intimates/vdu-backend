@@ -1,4 +1,5 @@
 // controllers/cart-controller.js
+const mongoose = require("mongoose"); // ADD THIS LINE
 const CartItem = require("../models/cart-model");
 const Product = require("../models/allproduct-model");
 
@@ -146,24 +147,68 @@ exports.updateCartItem = async (req, res) => {
 };
 
 /**
+ * DELETE /api/cart (with body)
+ * Removes one cart line by cartItemId in body.
+ */
+/**
  * DELETE /api/cart/:itemId
- * Removes one cart line.
+ * Removes one cart line by itemId in URL params.
  */
 exports.removeCartItem = async (req, res) => {
   try {
     const userId = req.user?.id;
+    console.log("🔍 User ID:", userId);
+    
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { itemId } = req.params;
-    const item = await CartItem.findOneAndDelete({ _id: itemId, userId });
-    if (!item) return res.status(404).json({ message: "Cart item not found" });
+    const { itemId } = req.params; // Changed from req.body to req.params
+    console.log("🔍 Cart Item ID to delete:", itemId);
+    
+    // Validate itemId
+    if (!itemId) {
+      return res.status(400).json({ message: "Cart item ID is required" });
+    }
 
-    res.json({ message: "Cart item removed" });
+    // Validate if itemId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(400).json({ message: "Invalid cart item ID format" });
+    }
+
+    // Check all cart items BEFORE deletion
+    const allItemsBefore = await CartItem.find({ userId });
+    console.log("🔍 Total cart items BEFORE delete:", allItemsBefore.length);
+    console.log("🔍 Items BEFORE:", allItemsBefore.map(i => ({ id: i._id.toString(), name: i.productName })));
+
+    // Delete ONE specific cart item by its MongoDB _id and userId
+    const deletedItem = await CartItem.findOneAndDelete({ 
+      _id: itemId, // No need for new mongoose.Types.ObjectId(), Mongoose handles it
+      userId 
+    });
+
+    console.log("🔍 Deleted item:", deletedItem ? { id: deletedItem._id.toString(), name: deletedItem.productName } : "NONE");
+
+    // Check all cart items AFTER deletion
+    const allItemsAfter = await CartItem.find({ userId });
+    console.log("🔍 Total cart items AFTER delete:", allItemsAfter.length);
+    console.log("🔍 Items AFTER:", allItemsAfter.map(i => ({ id: i._id.toString(), name: i.productName })));
+
+    if (!deletedItem) {
+      return res.status(404).json({ message: "Cart item not found or doesn't belong to you" });
+    }
+    
+    res.json({ 
+      message: "Cart item removed successfully", 
+      removedItem: deletedItem 
+    });
   } catch (err) {
-    console.error("removeCartItem error:", err);
-    res.status(500).json({ message: "Failed to remove cart item" });
+    console.error("❌ removeCartItem error:", err);
+    res.status(500).json({ 
+      message: "Failed to remove cart item",
+      error: err.message
+    });
   }
 };
+
 
 /**
  * DELETE /api/cart

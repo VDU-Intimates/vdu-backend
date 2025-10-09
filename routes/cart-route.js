@@ -9,8 +9,8 @@ const validateToken = require("../middleware/validate-token-handler");
 
 router.get("/",validateToken, cartCtrl.getCart);
 router.post("/",validateToken, cartCtrl.addToCart);
+router.delete("/deleteAll",validateToken, cartCtrl.clearCart);
 router.patch("/:itemId",validateToken, cartCtrl.updateCartItem);
 router.delete("/:itemId",validateToken, cartCtrl.removeCartItem);
-router.delete("/",validateToken, cartCtrl.clearCart);
 
 module.exports = router;

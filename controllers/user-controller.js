@@ -114,6 +114,33 @@ const getUser = asyncHandler(async (req, res) => {
   return res.json({ user: safeUser });
 });
 
+const getUserById = asyncHandler(async (req, res) => {
+  // Uses ID from URL parameter: req.params.id (Mongoose _id)
+  const idFromUrl = req.params.id;
+  
+  if (!idFromUrl) return res.status(400).json({ message: "User ID is required." });
+
+  // Optional: Check if the requesting user (req.user?.id) is authorized to view this user's data
+  // For invoice viewing, we assume a token holder can view the linked user's data.
+
+  const user = await User.findById(idFromUrl);
+  if (!user) return res.status(404).json({ message: "User not found." });
+
+  // Return only the necessary/safe fields for the invoice
+  const safeUser = {
+    userId: user.userId,
+    fName: user.fName,
+    lName:  user.lName,
+    email:     user.email,
+    // Note: Do NOT return the password hash
+    address:   user.address || null,
+    contact:   user.contact || null,
+    role:      user.role, // Added role for context
+  };
+
+  return res.json({ user: safeUser });
+});
+
 // PATCH /me  (protected) — optional profile update
 // body: { firstName?, lastName?, phone?, address? }
 const updateUser = asyncHandler(async (req, res) => {
@@ -150,4 +177,5 @@ module.exports = {
   loginUser,
   getUser,
   updateUser,
+  getUserById
 };
