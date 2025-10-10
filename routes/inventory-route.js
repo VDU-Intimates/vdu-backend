@@ -5,6 +5,7 @@ const {
   createProduct,
   updateProductById,
   deleteProductById,
+  exportProductsCsv
 } = require("../controllers/inventory-controller");
 
 const validateToken = require("../middleware/validate-token-handler");
@@ -30,5 +31,8 @@ router.get("/", listProducts);
 router.post("/", validateToken, requireRole("Admin"), createProduct);
 router.patch("/:id", validateToken, requireRole("Admin"), updateProductById);
 router.delete("/:id", validateToken, requireRole("Admin"), deleteProductById);
+
+// --- New: CSV report ---
+router.get("/report", exportProductsCsv); // you can protect with validateToken if needed
 
 module.exports = router;
