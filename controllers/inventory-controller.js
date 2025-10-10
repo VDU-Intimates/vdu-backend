@@ -113,7 +113,7 @@ async function updateProductById(req, res) {
       "photoUrl","colors","sizes","category",
       "stock" // ✅ NEW
     ];
-    for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
+    for (const k of allowed) if (k in req.body)   [k] = req.body[k];
 
     if (patch.productName != null) patch.productName = String(patch.productName).trim();
     if (patch.description != null) patch.description = String(patch.description).trim();
