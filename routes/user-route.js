@@ -4,8 +4,12 @@ const {
   registerUser,
   loginUser,
   getUser,
+  deleteUser,
   updateUser,
-  getUserById
+  verifyOtp,
+  reSendOtp,
+  getAccountStats,
+  downloadAccountSummaryPdf
 } = require("../controllers/user-controller");
 
 // Your JWT middleware (what you called validate-token-handler.js)
@@ -16,11 +20,19 @@ const router = express.Router();
 // Auth
 router.post("/register", registerUser);
 router.post("/login", loginUser);
+router.post("/verify-otp", verifyOtp);
+router.post("/request-otp", reSendOtp);
 
 // Me (protected)
 router.get("/me", validateToken, getUser);
 router.patch("/me", validateToken, updateUser);
+router.delete("/me", validateToken, deleteUser); 
 
-router.get("/:id", validateToken, getUserById); 
+//Report
+// JSON stats (profile + counts)
+router.get("/account-stats", validateToken, getAccountStats);
+
+// PDF download (profile + counts)
+router.get("/account-summary", validateToken, downloadAccountSummaryPdf);
 
 module.exports = router;
