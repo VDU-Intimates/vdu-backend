@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
     "bson": "^6.10.4",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -30,7 +31,8 @@
     "mongoose": "^8.18.1",
     "mongoose-sequence": "^6.0.1",
     "nodemailer": "^7.0.6",
-    "pdfkit": "^0.17.2"
+    "pdfkit": "^0.17.2",
+    "stripe": "^19.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.3.1",
