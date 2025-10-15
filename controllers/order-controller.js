@@ -17,7 +17,7 @@ const placeOrder = async (req, res) => {
     quantity,
     isBulk,
     items,
-    paymentType // <-- NEW: 'COD' or 'ONLINE'
+    paymentType
   } = req.body;
 
   try {
