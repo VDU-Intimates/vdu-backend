@@ -26,7 +26,7 @@ const ProductSchema = new mongoose.Schema(
       min: 0,
     },
     photoUrl: {
-      type: String,
+      type: [String],
       required: true,
       trim: true,
     },

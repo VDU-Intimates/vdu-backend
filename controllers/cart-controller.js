@@ -1,23 +1,32 @@
 // controllers/cart-controller.js
-const mongoose = require("mongoose"); // ADD THIS LINE
+const mongoose = require("mongoose");
 const CartItem = require("../models/cart-model");
 const Product = require("../models/allproduct-model");
 
+// Helper: resolve product by Mongo _id or business productId
+async function findProductByAnyId(anyId) {
+  // try mongo id first
+  if (anyId && mongoose.Types.ObjectId.isValid(String(anyId))) {
+    const byMongo = await Product.findById(anyId).lean();
+    if (byMongo) return byMongo;
+  }
+  // then business id
+  return Product.findOne({ productId: String(anyId) }).lean();
+}
+
 /**
  * GET /api/cart
- * Returns all items for current user with the fields you need visible.
  */
 exports.getCart = async (req, res) => {
   try {
-    const userId = req.user?.id; // set by auth middleware from JWT
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const items = await CartItem.find({ userId }).sort({ createdAt: -1 }).lean();
-
     const subtotal = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
 
     res.json({
-      items, // each item contains: productId, productName, price, photoUrl, size, quantity
+      items,
       subtotal,
       count: items.reduce((sum, it) => sum + it.quantity, 0),
     });
@@ -29,57 +38,61 @@ exports.getCart = async (req, res) => {
 
 /**
  * POST /api/cart
- * body: { productId, size, quantity? }
- * Adds (or increments) a cart line. Validates size against product.sizes.
+ * Accepts EITHER:
+ *  - { productId, size, quantity }
+ *  - { items: [{ productId, size, quantity }] }
  */
 exports.addToCart = async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { productId, size, quantity = 1 } = req.body || {};
-    if (!productId || !size) {
-      return res.status(400).json({ message: "productId and size are required" });
+    const body = req.body || {};
+    const itemsArray = Array.isArray(body.items) ? body.items : [body];
+
+    const createdOrUpdated = [];
+    for (const entry of itemsArray) {
+      if (!entry) continue;
+      const { productId, size, quantity = 1 } = entry;
+
+      if (!productId || !size) continue;
+      if (Number(quantity) < 1) continue;
+
+      const product = await findProductByAnyId(productId);
+      if (!product) continue;
+      if (!Array.isArray(product.sizes) || !product.sizes.includes(size)) continue;
+
+      // Upsert by (userId, product.productId (business id), size)
+      const where = { userId, productId: product.productId, size };
+      const existing = await CartItem.findOne(where);
+
+      if (existing) {
+        existing.quantity += Number(quantity);
+        await existing.save();
+        createdOrUpdated.push(existing);
+      } else {
+        const item = await CartItem.create({
+          userId,
+          productId: product.productId,         // store business id in cart
+          size,
+          quantity: Number(quantity),
+          productName: product.productName,
+          price: product.price,
+          photoUrl: Array.isArray(product.photoUrl) ? product.photoUrl[0] : product.photoUrl, // main image
+        });
+        createdOrUpdated.push(item);
+      }
     }
-    if (quantity < 1) {
-      return res.status(400).json({ message: "quantity must be >= 1" });
+
+    if (createdOrUpdated.length === 0) {
+      return res.status(400).json({ message: "No valid items were added" });
     }
 
-    // Find product by public productId
-    const product = await Product.findOne({ productId }).lean();
-    if (!product) return res.status(404).json({ message: "Product not found" });
-
-    // Validate requested size exists on product
-    if (!product.sizes.includes(size)) {
-      return res.status(400).json({ message: "Invalid size for this product" });
-    }
-
-    // Upsert: if same (user, productId, size) exists, just bump quantity
-    const existing = await CartItem.findOne({ userId, productId, size });
-
-    if (existing) {
-      existing.quantity += quantity;
-      await existing.save();
-      return res.status(200).json({ item: existing, message: "Cart updated" });
-    }
-
-    // Create new line with snapshot fields
-    const item = await CartItem.create({
-      userId,
-      productId,
-      size,
-      quantity,
-      productName: product.productName,
-      price: product.price,
-      photoUrl: product.photoUrl,
+    res.status(201).json({
+      message: `${createdOrUpdated.length} item(s) added to cart`,
+      items: createdOrUpdated,
     });
-
-    res.status(201).json({ item, message: "Added to cart" });
   } catch (err) {
-    // Handle unique index race (duplicate key) gracefully
-    if (err?.code === 11000) {
-      return res.status(409).json({ message: "Item already in cart (same size)" });
-    }
     console.error("addToCart error:", err);
     res.status(500).json({ message: "Failed to add to cart" });
   }
@@ -87,7 +100,6 @@ exports.addToCart = async (req, res) => {
 
 /**
  * PATCH /api/cart/:itemId
- * body: { quantity?, size? }  (size change re-validates against product)
  */
 exports.updateCartItem = async (req, res) => {
   try {
@@ -95,130 +107,58 @@ exports.updateCartItem = async (req, res) => {
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const { itemId } = req.params;
-    const { quantity, size } = req.body || {};
+    const { quantity } = req.body || {};
 
     const item = await CartItem.findOne({ _id: itemId, userId });
     if (!item) return res.status(404).json({ message: "Cart item not found" });
 
-    // Update quantity
     if (quantity != null) {
       const q = Number(quantity);
-      if (Number.isNaN(q) || q < 1) {
-        return res.status(400).json({ message: "quantity must be >= 1" });
+      if (!Number.isFinite(q) || q < 1) {
+        return res.status(400).json({ message: "Quantity must be >= 1" });
       }
       item.quantity = q;
-    }
-
-    // Update size (must validate against product)
-    if (size != null && size !== item.size) {
-      const product = await Product.findOne({ productId: item.productId }).lean();
-      if (!product) return res.status(404).json({ message: "Product not found" });
-      if (!product.sizes.includes(size)) {
-        return res.status(400).json({ message: "Invalid size for this product" });
-      }
-
-      // If changing size results in duplicate (same user+prod+size), merge quantities
-      const duplicate = await CartItem.findOne({
-        userId,
-        productId: item.productId,
-        size,
-        _id: { $ne: item._id },
-      });
-
-      if (duplicate) {
-        duplicate.quantity += item.quantity;
-        await duplicate.save();
-        await item.deleteOne();
-        return res.json({ item: duplicate, message: "Size updated and merged" });
-      }
-
-      item.size = size;
     }
 
     await item.save();
     res.json({ item, message: "Cart item updated" });
   } catch (err) {
-    if (err?.code === 11000) {
-      return res.status(409).json({ message: "Item already exists with that size" });
-    }
     console.error("updateCartItem error:", err);
     res.status(500).json({ message: "Failed to update cart item" });
   }
 };
 
 /**
- * DELETE /api/cart (with body)
- * Removes one cart line by cartItemId in body.
- */
-/**
  * DELETE /api/cart/:itemId
- * Removes one cart line by itemId in URL params.
  */
 exports.removeCartItem = async (req, res) => {
   try {
     const userId = req.user?.id;
-    console.log("🔍 User ID:", userId);
-    
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const { itemId } = req.params; // Changed from req.body to req.params
-    console.log("🔍 Cart Item ID to delete:", itemId);
-    
-    // Validate itemId
-    if (!itemId) {
-      return res.status(400).json({ message: "Cart item ID is required" });
-    }
-
-    // Validate if itemId is a valid ObjectId
+    const { itemId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(itemId)) {
-      return res.status(400).json({ message: "Invalid cart item ID format" });
+      return res.status(400).json({ message: "Invalid item ID" });
     }
 
-    // Check all cart items BEFORE deletion
-    const allItemsBefore = await CartItem.find({ userId });
-    console.log("🔍 Total cart items BEFORE delete:", allItemsBefore.length);
-    console.log("🔍 Items BEFORE:", allItemsBefore.map(i => ({ id: i._id.toString(), name: i.productName })));
-
-    // Delete ONE specific cart item by its MongoDB _id and userId
-    const deletedItem = await CartItem.findOneAndDelete({ 
-      _id: itemId, // No need for new mongoose.Types.ObjectId(), Mongoose handles it
-      userId 
-    });
-
-    console.log("🔍 Deleted item:", deletedItem ? { id: deletedItem._id.toString(), name: deletedItem.productName } : "NONE");
-
-    // Check all cart items AFTER deletion
-    const allItemsAfter = await CartItem.find({ userId });
-    console.log("🔍 Total cart items AFTER delete:", allItemsAfter.length);
-    console.log("🔍 Items AFTER:", allItemsAfter.map(i => ({ id: i._id.toString(), name: i.productName })));
-
-    if (!deletedItem) {
-      return res.status(404).json({ message: "Cart item not found or doesn't belong to you" });
+    const deleted = await CartItem.findOneAndDelete({ _id: itemId, userId });
+    if (!deleted) {
+      return res.status(404).json({ message: "Item not found or unauthorized" });
     }
-    
-    res.json({ 
-      message: "Cart item removed successfully", 
-      removedItem: deletedItem 
-    });
+    res.json({ message: "Item removed", deleted });
   } catch (err) {
-    console.error("❌ removeCartItem error:", err);
-    res.status(500).json({ 
-      message: "Failed to remove cart item",
-      error: err.message
-    });
+    console.error("removeCartItem error:", err);
+    res.status(500).json({ message: "Failed to remove item" });
   }
 };
 
-
 /**
- * DELETE /api/cart
- * Clears the whole cart for the user.
+ * DELETE /api/cart/deleteAll
  */
 exports.clearCart = async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
-
     await CartItem.deleteMany({ userId });
     res.json({ message: "Cart cleared" });
   } catch (err) {
