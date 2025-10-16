@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 
 const DesignTextSchema = new mongoose.Schema(
   {
-    content: { type: String, required: true },   // user typed string
+    content: { type: String, required: true, trim: true, maxlength: 2000, },   // user typed string
     fontFamily: { type: String, default: "Raleway" },
     fontSize: { type: Number, default: 16 },
     color: { type: String, default: "#000000" },
