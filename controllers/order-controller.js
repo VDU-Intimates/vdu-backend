@@ -130,26 +130,35 @@ const getOrderDetailsById = async (req, res) => {
 
     const aggregationPipeline = [
       { $match: { orderId: orderId } },
+      // Join with users and items as before
       { $lookup: { from: 'orderitems', localField: 'orderId', foreignField: 'orderId', as: 'items' } },
       { $lookup: { from: 'users', localField: 'userId', foreignField: 'userId', as: 'userDetails' } },
+      
+      // --- ADD THIS NEW STAGE ---
+      // Join with the 'deliveries' collection to get the delivery name
+      { $lookup: { from: 'deliveries', localField: 'orderId', foreignField: 'orderId', as: 'deliveryDetails' } },
+      // --- END OF NEW STAGE ---
+
+      // Unwind the results
       { $unwind: { path: '$userDetails', preserveNullAndEmptyArrays: true } },
-      { 
-        $addFields: { 
-          hasItems: { $gt: [{ $size: { $ifNull: ['$items', []] } }, 0] } 
-        } 
-      },
+      { $unwind: { path: '$deliveryDetails', preserveNullAndEmptyArrays: true } }, // Also unwind deliveryDetails
+
+      { $addFields: { hasItems: { $gt: [{ $size: { $ifNull: ['$items', []] } }, 0] } } },
+      
       {
         $project: {
           _id: 0,
-          // ... other fields
-          fName: '$userDetails.fName',
-          lName: '$userDetails.lName',
+          // ... other fields remain the same
           date: '$date',
           orderStatus: '$orderStatus',
-          isBulk: '$isBulk',
-          // VERIFY THESE FIELD NAMES MATCH YOUR Order SCHEMA EXACTLY
           discount: '$discount',
-          totalAmount: '$totalAmount'
+          totalAmount: '$totalAmount',
+          // Get the registered user's name (can be used as a fallback)
+          fName: '$userDetails.fName',
+          lName: '$userDetails.lName',
+          // --- ADD THIS LINE ---
+          // Explicitly get the customerName from the delivery details
+          customerName: '$deliveryDetails.customerName'
         }
       }
     ];
@@ -163,7 +172,7 @@ const getOrderDetailsById = async (req, res) => {
     const orderDetails = results[0];
 
     if (loggedInUserRole !== 'Admin') {
-        return res.status(403).json({ message: "Forbidden: You do not have permission to view this resource." });
+        return res.status(403).json({ message: "Forbidden: You do not have permission." });
     }
 
     res.status(200).json(orderDetails);
