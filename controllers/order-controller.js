@@ -8,10 +8,6 @@ const OrderItem = require('../models/order-item-model');
 const Delivery = require('../models/delivery-model');
 const { sendOrderStatusUpdateEmail } = require('../utils/mailer');
 
-// ⚠️ Make sure this path matches your actual filename.
-// If your model file is "models/order-item.js", use that path.
-const OrderItem = require('../models/order-item-model'); 
-const Delivery = require('../models/delivery-model'); // unchanged
 
 function bad(msg, code = 400) {
   const err = new Error(msg || 'Bad Request');
@@ -31,7 +27,6 @@ const placeOrder = async (req, res) => {
     totalAmount,
     date,
     items,
-
     paymentType,
     paymentIntentId
   } = req.body;
@@ -242,16 +237,36 @@ const getOrderItemsByOrderId = async (req, res) => {
     const { orderId } = req.params;
 
     const items = await OrderItem.aggregate([
-      { $match: { orderId: orderId } },
+      { $match: { orderId } },
       {
         $lookup: {
           from: 'products',
           localField: 'productId',
           foreignField: 'productId',
-          as: 'productDetails'
-        }
+          as: 'productDetails',
+        },
       },
       { $unwind: { path: '$productDetails', preserveNullAndEmptyArrays: true } },
+
+      // extract first product image (array -> first; or null)
+      {
+        $addFields: {
+          productPhotoUrl: {
+            $let: {
+              vars: { arr: { $ifNull: ['$productDetails.photoUrl', []] } },
+              in: {
+                $cond: [
+                  { $gt: [{ $size: '$$arr' }, 0] },
+                  { $arrayElemAt: ['$$arr', 0] },
+                  null,
+                ],
+              },
+            },
+          },
+        },
+      },
+
+      // prefer customPreviewUrl if customized and non-empty; else productPhotoUrl
       {
         $project: {
           _id: 1,
@@ -259,15 +274,25 @@ const getOrderItemsByOrderId = async (req, res) => {
           quantity: 1,
           unitPrice: 1,
           productId: 1,
-          // --- FIX IS HERE ---
-          // Return null instead of an empty string if the photoUrl is missing.
-          photoUrl: { $ifNull: ['$productDetails.photoUrl', null] }
-        }
-      }
+          isCustomized: 1,
+          customPreviewUrl: 1,
+          photoUrl: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$isCustomized', true] },
+                  { $ne: [{ $ifNull: ['$customPreviewUrl', ''] }, ''] },
+                ],
+              },
+              '$customPreviewUrl',
+              '$productPhotoUrl',
+            ],
+          },
+        },
+      },
     ]);
 
     res.status(200).json(items);
-
   } catch (error) {
     console.error('Error fetching order items:', error);
     res.status(500).json({ message: 'Server error.' });

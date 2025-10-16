@@ -18,7 +18,7 @@ const contactRoutes = require("./routes/contact-routes");
 const paymentRoutes = require("./routes/stripe-payment-route");
 const ratingRoutes = require("./routes/rating-route");
 dotenv.config(); // must be before using process.env
- c5d3b690205f289ca66d93dc9f780b58fc36361c
+
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
