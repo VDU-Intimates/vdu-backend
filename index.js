@@ -17,7 +17,7 @@ const deliveryRoutes = require("./routes/delivery-routes");
 const contactRoutes = require("./routes/contact-routes");
 const paymentRoutes = require("./routes/stripe-payment-route");
 const ratingRoutes = require("./routes/rating-route");
-dotenv.config(); // must be before using process.env
+const reportRoutes = require("./routes/report-routes");
 
 
 const app = express();
@@ -47,6 +47,7 @@ app.use("/api/cart", cartRoutes);
 app.use("/api/reports", userRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use("/api/ratings", ratingRoutes);
+app.use("/api/reports", reportRoutes);
 
 // Connect MongoDB
 mongoose
