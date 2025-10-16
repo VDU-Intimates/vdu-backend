@@ -1,8 +1,9 @@
-// controllers/order-controller.js
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const Order = require('../models/order-model');
-const User = require('../models/user-model');
 const OrderItem = require('../models/order-item-model');
 const Delivery = require('../models/delivery-model');
+const { sendOrderStatusUpdateEmail } = require('../utils/mailer');
 
 // --- Place Order (used by BOTH COD and Online after Stripe success) ---
 const placeOrder = async (req, res) => {
@@ -18,7 +19,8 @@ const placeOrder = async (req, res) => {
     quantity,
     isBulk,
     items,
-    paymentType
+    paymentType,
+    paymentIntentId
   } = req.body;
 
   try {
@@ -36,6 +38,7 @@ const placeOrder = async (req, res) => {
       orderStatus: 'Pending',
       isBulk: isBulk || (quantity > 500),
       paymentType, // <-- persist it
+      paymentIntentId: paymentType === 'ONLINE' ? paymentIntentId : null,
     });
 
     const savedOrder = await newOrder.save();
@@ -119,37 +122,34 @@ const getAllOrders = async (req, res) => {
 const getOrderDetailsById = async (req, res) => {
   try {
     const { orderId } = req.params;
-    
-    // --- MODIFICATION START ---
-    // Get the role of the logged-in user from the JWT token.
-    // Your validateToken middleware must add the role to the req.user object.
     const loggedInUserRole = req.user.role; 
-    // --- MODIFICATION END ---
 
     if (!orderId) {
       return res.status(400).json({ message: 'Order ID is required.' });
     }
 
-    // The aggregation pipeline remains the same
     const aggregationPipeline = [
       { $match: { orderId: orderId } },
       { $lookup: { from: 'orderitems', localField: 'orderId', foreignField: 'orderId', as: 'items' } },
       { $lookup: { from: 'users', localField: 'userId', foreignField: 'userId', as: 'userDetails' } },
       { $unwind: { path: '$userDetails', preserveNullAndEmptyArrays: true } },
-      { $addFields: { hasItems: { $gt: [{ $size: '$items' }, 0] } } },
+      { 
+        $addFields: { 
+          hasItems: { $gt: [{ $size: { $ifNull: ['$items', []] } }, 0] } 
+        } 
+      },
       {
         $project: {
           _id: 0,
-          productId: { $cond: { if: '$hasItems', then: { $arrayElemAt: ['$items.productId', 0] }, else: null } },
-          productName: { $cond: { if: '$hasItems', then: { $arrayElemAt: ['$items.name', 0] }, else: 'N/A' } },
-          price: { $cond: { if: '$hasItems', then: { $arrayElemAt: ['$items.unitPrice', 0] }, else: '$totalAmount' } },
-          quantity: { $cond: { if: '$hasItems', then: { $arrayElemAt: ['$items.quantity', 0] }, else: 0 } },
-          userId: '$userId',
+          // ... other fields
           fName: '$userDetails.fName',
           lName: '$userDetails.lName',
           date: '$date',
           orderStatus: '$orderStatus',
-          isBulk: '$isBulk'
+          isBulk: '$isBulk',
+          // VERIFY THESE FIELD NAMES MATCH YOUR Order SCHEMA EXACTLY
+          discount: '$discount',
+          totalAmount: '$totalAmount'
         }
       }
     ];
@@ -162,12 +162,9 @@ const getOrderDetailsById = async (req, res) => {
 
     const orderDetails = results[0];
 
-    // --- AUTHORIZATION CHECK MODIFIED ---
-    // Now, we verify that the user making the request has the 'Admin' role.
     if (loggedInUserRole !== 'Admin') {
         return res.status(403).json({ message: "Forbidden: You do not have permission to view this resource." });
     }
-    // --- END AUTHORIZATION CHECK ---
 
     res.status(200).json(orderDetails);
 
@@ -181,30 +178,17 @@ const getOrderItemsByOrderId = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // Use an aggregation pipeline to join OrderItems with Products
     const items = await OrderItem.aggregate([
-      // Stage 1: Find all items for the given orderId
       { $match: { orderId: orderId } },
-      
-      // Stage 2: Join with the 'products' collection
       {
         $lookup: {
-          from: 'products', // The name of your products collection in MongoDB
+          from: 'products',
           localField: 'productId',
           foreignField: 'productId',
           as: 'productDetails'
         }
       },
-      
-      // Stage 3: Deconstruct the productDetails array to get a single object
-      {
-        $unwind: {
-          path: '$productDetails',
-          preserveNullAndEmptyArrays: true // Keep the item even if its product was deleted
-        }
-      },
-
-      // Stage 4: Project only the fields we need for the frontend
+      { $unwind: { path: '$productDetails', preserveNullAndEmptyArrays: true } },
       {
         $project: {
           _id: 1,
@@ -212,15 +196,12 @@ const getOrderItemsByOrderId = async (req, res) => {
           quantity: 1,
           unitPrice: 1,
           productId: 1,
-          // Get photoUrl from the joined product, provide a default if null
-          photoUrl: { $ifNull: ['$productDetails.photoUrl', ''] }
+          // --- FIX IS HERE ---
+          // Return null instead of an empty string if the photoUrl is missing.
+          photoUrl: { $ifNull: ['$productDetails.photoUrl', null] }
         }
       }
     ]);
-
-    if (!items || items.length === 0) {
-      return res.status(404).json({ message: "No items found for this order." });
-    }
 
     res.status(200).json(items);
 
@@ -232,37 +213,66 @@ const getOrderItemsByOrderId = async (req, res) => {
 
 const updateOrderStatus = async (req, res) => {
   try {
-    // 1. Check if the user is an admin (from JWT middleware)
     if (req.user.role !== 'Admin') {
-      return res.status(403).json({ message: "Forbidden: You do not have permission to perform this action." });
+      return res.status(403).json({ message: "Forbidden: You do not have permission." });
     }
 
     const { orderId } = req.params;
-    const { status } = req.body;
+    const { status: newStatus } = req.body;
 
-    // 2. Validate the incoming status
-    if (!status || !['Accepted', 'Cancelled'].includes(status)) {
-      return res.status(400).json({ message: "Invalid status provided. Must be 'Accepted' or 'Cancelled'." });
-    }
-
-    // 3. Find the order and update its status
-    // { new: true } ensures the updated document is returned
-    const updatedOrder = await Order.findOneAndUpdate(
-      { orderId: orderId },
-      { orderStatus: status },
-      { new: true }
-    );
-
-    // 4. Handle case where the order is not found
-    if (!updatedOrder) {
+    const order = await Order.findOne({ orderId: orderId });
+    if (!order) {
       return res.status(404).json({ message: `Order with ID '${orderId}' not found.` });
     }
 
-    // 5. Send the updated order as a confirmation
+    const currentStatus = order.orderStatus;
+    const validTransitions = {
+      Pending: ['Accepted', 'Cancelled'],
+      Accepted: ['Shipped'],
+      Shipped: ['Delivered'],
+    };
+
+    if (!validTransitions[currentStatus] || !validTransitions[currentStatus].includes(newStatus)) {
+      return res.status(400).json({
+        message: `Cannot change status from '${currentStatus}' to '${newStatus}'.`,
+      });
+    }
+
+    if (newStatus === 'Cancelled' && order.paymentType === 'ONLINE' && order.paymentIntentId) {
+      await stripe.refunds.create({ payment_intent: order.paymentIntentId });
+      console.log(`Stripe refund issued for order ${orderId}`);
+    }
+
+    const updatedOrder = await Order.findOneAndUpdate(
+      { orderId: orderId },
+      { $set: { orderStatus: newStatus } },
+      { new: true }
+    );
+
+    // --- MODIFICATION START: Fetch email from the correct place ---
+    // 2. Find the delivery details associated with this specific order
+    const deliveryDetails = await Delivery.findOne({ orderId: order.orderId });
+
+    if (deliveryDetails && deliveryDetails.email) {
+      // 3. Use the customerName and email from the delivery document
+      await sendOrderStatusUpdateEmail(
+        deliveryDetails.email, 
+        deliveryDetails.customerName, 
+        order.orderId, 
+        newStatus
+      );
+    } else {
+      console.warn(`Could not find delivery details or email for order ${orderId}. Email not sent.`);
+    }
+    // --- END OF MODIFICATION ---
+
     res.status(200).json(updatedOrder);
 
   } catch (error) {
     console.error('Error updating order status:', error);
+    if (error.type === 'StripeInvalidRequestError') {
+      return res.status(400).json({ message: `Stripe error: ${error.message}` });
+    }
     res.status(500).json({ message: 'Server error while updating order status.' });
   }
 };
