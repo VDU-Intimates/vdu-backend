@@ -31,6 +31,12 @@ const orderSchema = new mongoose.Schema({
     required: true
   },
 
+  paymentIntentId: {
+    type: String,
+    trim: true,
+    default: null
+  },
+
   subTotal: { type: Number, required: true },
   deliverFee: { type: Number, required: true },
   discount: { type: Number, required: true, default: 0 },
