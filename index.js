@@ -16,6 +16,9 @@ const cartRoutes = require("./routes/cart-route");
 const deliveryRoutes = require("./routes/delivery-routes");
 const contactRoutes = require("./routes/contact-routes");
 const paymentRoutes = require("./routes/stripe-payment-route");
+const ratingRoutes = require("./routes/rating-route");
+dotenv.config(); // must be before using process.env
+
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
@@ -43,6 +46,7 @@ app.use("/api/designs",DesignRouter );
 app.use("/api/cart", cartRoutes);
 app.use("/api/reports", userRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use("/api/ratings", ratingRoutes);
 
 // Connect MongoDB
 mongoose
