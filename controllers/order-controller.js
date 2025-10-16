@@ -1,5 +1,3 @@
-
-// controllers/order-controller.js
 const mongoose = require('mongoose');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -7,7 +5,6 @@ const Order = require('../models/order-model');
 const OrderItem = require('../models/order-item-model');
 const Delivery = require('../models/delivery-model');
 const { sendOrderStatusUpdateEmail } = require('../utils/mailer');
-
 
 function bad(msg, code = 400) {
   const err = new Error(msg || 'Bad Request');
@@ -153,13 +150,44 @@ const getOrderInvoiceById = async (req, res) => {
   }
 };
 
+// controllers/order-controller.js
+
 const getAllOrders = async (req, res) => {
   try {
-    // Fetch all orders and sort them by the most recent date
-    // We only select the fields needed for the order list page for efficiency
-    const orders = await Order.find({})
-      .select('orderId totalAmount orderStatus date')
-      .sort({ date: -1 });
+    const orders = await Order.aggregate([
+      { $sort: { date: -1 } },
+      {
+        $lookup: {
+          from: 'orderitems',
+          localField: 'orderId',
+          foreignField: 'orderId',
+          as: 'items'
+        }
+      },
+      {
+        $addFields: {
+          hasCustomizedItems: {
+            $anyElementTrue: {
+              $map: {
+                input: '$items',
+                as: 'item',
+                in: '$$item.isCustomized'
+              }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          orderId: 1,
+          totalAmount: 1,
+          orderStatus: 1,
+          date: 1,
+          hasCustomizedItems: 1,
+          _id: 0
+        }
+      }
+    ]);
 
     res.status(200).json(orders);
   } catch (error) {
@@ -248,25 +276,8 @@ const getOrderItemsByOrderId = async (req, res) => {
       },
       { $unwind: { path: '$productDetails', preserveNullAndEmptyArrays: true } },
 
-      // extract first product image (array -> first; or null)
-      {
-        $addFields: {
-          productPhotoUrl: {
-            $let: {
-              vars: { arr: { $ifNull: ['$productDetails.photoUrl', []] } },
-              in: {
-                $cond: [
-                  { $gt: [{ $size: '$$arr' }, 0] },
-                  { $arrayElemAt: ['$$arr', 0] },
-                  null,
-                ],
-              },
-            },
-          },
-        },
-      },
-
-      // prefer customPreviewUrl if customized and non-empty; else productPhotoUrl
+      // --- MODIFICATION IS HERE ---
+      // We now project all the necessary fields for both regular and custom items.
       {
         $project: {
           _id: 1,
@@ -274,20 +285,13 @@ const getOrderItemsByOrderId = async (req, res) => {
           quantity: 1,
           unitPrice: 1,
           productId: 1,
+          // Customization Fields
           isCustomized: 1,
           customPreviewUrl: 1,
-          photoUrl: {
-            $cond: [
-              {
-                $and: [
-                  { $eq: ['$isCustomized', true] },
-                  { $ne: [{ $ifNull: ['$customPreviewUrl', ''] }, ''] },
-                ],
-              },
-              '$customPreviewUrl',
-              '$productPhotoUrl',
-            ],
-          },
+          customImageUrls: 1,
+          customTexts: 1,
+          // Regular product photo (we get the first one from the array)
+          photoUrl: { $ifNull: [{ $arrayElemAt: ['$productDetails.photoUrl', 0] }, null] },
         },
       },
     ]);
