@@ -136,59 +136,70 @@ async function createCheckoutSession(req, res) {
  * body: { sessionId }
  * Returns { paid, items, totals } so the FE can call your existing place-order API.
  */
+// confirmCheckoutAndCreateOrder.js (controller)
+
 async function confirmCheckoutAndCreateOrder(req, res) {
-    try {
-      const userId = req.user?.id;
-      if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  
-      const { sessionId } = req.body || {};
-      if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
-  
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-  
-      if (session.client_reference_id !== String(userId)) {
-        return res.status(403).json({ error: 'Session does not belong to this user' });
-      }
-      if (session.payment_status !== 'paid') {
-        return res.status(400).json({ error: 'Payment not completed' });
-      }
-  
-      // Pull what we stored in metadata during create-checkout-session
-      const md = session.metadata || {};
-  
-      // Snapshot the user's cart at this moment (names, prices, qty)
-      const cart = await CartItem.find({ userId }).lean();
-      const items = cart.map((it) => ({
-        name: it.productName,
-        productId: it.productId,      // business productId
-        customisedProductId: null,
-        quantity: it.quantity,
-        unitPrice: it.price,
-        image: it.photoUrl,
-        size: it.size,
-      }));
-  
-      const totals = {
-        subTotal: Number(md.subTotal ?? 0),
-        discountAmount: Number(md.discountAmount ?? 0),
-        deliveryFee: Number(md.deliveryFee ?? 0),
-        totalAmount: Number(md.totalAmount ?? 0),
-      };
-  
-      const deliveryInfo = {
-        fullName: md.fullName || '',
-        address: md.address || '',
-        phoneNumber: md.phoneNumber || '',
-        email: md.email || '',
-      };
-  
-      // Do NOT create order here — the FE will call /orders/place-order next
-      return res.json({ items, totals, deliveryInfo });
-    } catch (err) {
-      console.error('confirmCheckout error:', err);
-      res.status(500).json({ error: 'Failed to confirm checkout' });
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+    const { sessionId } = req.body || {};
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['customer_details']
+    });
+
+    if (String(session.client_reference_id) !== String(userId)) {
+      return res.status(403).json({ error: 'Session does not belong to this user' });
     }
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+
+    // 1) Snapshot the cart (already in rupees/major units)
+    const cart = await CartItem.find({ userId }).lean();
+    const items = cart.map(it => ({
+      name: it.productName,
+      productId: it.productId,
+      size: it.size,
+      customisedProductId: it.custom?.designId || null,
+      quantity: it.quantity,
+      unitPrice: Number(it.price),           // keep as-is (major units)
+
+      // customization snapshot for admin
+      isCustomized: !!it.custom?.isCustomized,
+      customPreviewUrl: it.custom?.previewUrl || '',
+      customImageUrls: Array.isArray(it.custom?.imageUrls) ? it.custom.imageUrls : [],
+      customTexts: Array.isArray(it.custom?.texts) ? it.custom.texts : [],
+    }));
+
+    // 2) Totals from Stripe session (always in MINOR units → divide by 100)
+    const totals = {
+      subTotal: (session.amount_subtotal || 0) / 100,
+      discountAmount: (session.total_details?.amount_discount || 0) / 100,
+      deliveryFee: (session.total_details?.amount_shipping || 0) / 100,
+      totalAmount: (session.amount_total || 0) / 100,
+    };
+
+    // 3) Delivery info (prefer session fields, fallback to metadata)
+    const md = session.metadata || {};
+    const cd = session.customer_details || {};
+    const deliveryInfo = {
+      fullName: md.fullName || cd.name || '',
+      address: md.address || '',
+      phoneNumber: md.phoneNumber || cd.phone || '',
+      email: md.email || cd.email || '',
+    };
+
+    // FE will call /orders/place-order next with { items, totals, deliveryInfo }
+    return res.json({ items, totals, deliveryInfo });
+  } catch (err) {
+    console.error('confirmCheckout error:', err);
+    return res.status(500).json({ error: 'Failed to confirm checkout' });
   }
+}
+
 
 module.exports = {
   createCheckoutSession,
