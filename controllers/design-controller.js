@@ -29,40 +29,36 @@ function toISODateOnly(d) {
 async function listDesigns(req, res) {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    // ✅ Force a max of 5 designs unless user specifies otherwise
+    const limit = Math.min(5, Math.max(1, Number(req.query.limit) || 5));
 
-    const baseFilter = { userId: req.user.id };
+    const filter = { userId: req.user.id };
 
-    // Optional filters (e.g., ?from=2025-01-01&to=2025-01-31)
     const { from, to, productName, q } = req.query || {};
-    const filter = { ...baseFilter };
-
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = new Date(from);
       if (to) {
         const end = new Date(to);
-        // make 'to' inclusive by going to end of day
         end.setHours(23, 59, 59, 999);
         filter.createdAt.$lte = end;
       }
     }
 
     if (productName) filter.productName = new RegExp(String(productName), "i");
-
     if (q) {
-      // simple keyword: search in productName or any text content
       filter.$or = [
         { productName: new RegExp(String(q), "i") },
         { "texts.content": new RegExp(String(q), "i") },
       ];
     }
 
+    // ✅ Sort newest first and limit to 5
     const [data, total] = await Promise.all([
       Design.find(filter)
-        .sort("-createdAt")
-        .skip((page - 1) * limit)
+        .sort({ createdAt: -1 })
         .limit(limit)
+        .select("designUrl productName createdAt")
         .lean(),
       Design.countDocuments(filter),
     ]);
