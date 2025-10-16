@@ -9,7 +9,8 @@ const {
   verifyOtp,
   reSendOtp,
   getAccountStats,
-  downloadAccountSummaryPdf
+  downloadAccountSummaryPdf,
+  getUserProfile
 } = require("../controllers/user-controller");
 
 // Your JWT middleware (what you called validate-token-handler.js)
@@ -34,5 +35,8 @@ router.get("/account-stats", validateToken, getAccountStats);
 
 // PDF download (profile + counts)
 router.get("/account-summary", validateToken, downloadAccountSummaryPdf);
+
+// Admin profile
+router.get('/profile', validateToken, getUserProfile);
 
 module.exports = router;

@@ -517,6 +517,24 @@ const downloadAccountSummaryPdf = asyncHandler(async (req, res) => {
   doc.end();
 });
 
+const getUserProfile = asyncHandler(async (req, res) => {
+  // The `validateToken` middleware puts the user's ID on `req.user`
+  const userId = req.user.userId;
+  if (!userId) {
+    return res.status(401).json({ message: "User not authenticated" });
+  }
+
+  // Find the user in the database but select only the necessary fields
+  const user = await User.findOne({ userId: userId }).select('fName lName email photoURL');
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  // Return the user's profile data
+  res.status(200).json(user);
+});
+
 module.exports = {
   registerUser,
   loginUser,
@@ -528,5 +546,6 @@ module.exports = {
   reSendOtp,
   getAccountStats,
   downloadAccountSummaryPdf,
-  getUserById
+  getUserById,
+  getUserProfile
 };
