@@ -535,6 +535,49 @@ const getUserProfile = asyncHandler(async (req, res) => {
   res.status(200).json(user);
 });
 
+const getAllUsers = asyncHandler(async (req, res) => {
+  // 1. Security Check: Ensure the requester is an admin
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ message: "Forbidden: You do not have permission to access this resource." });
+  }
+
+  // 2. Fetch all users from the database
+  //    - .select('-password') is a crucial security measure to exclude password hashes.
+  //    - .sort({ createdAt: -1 }) shows the newest users first.
+  const users = await User.find({}).select('-password').sort({ createdAt: -1 });
+
+  // 3. Return the array of users
+  res.status(200).json(users);
+});
+
+// --- ADD THIS NEW FUNCTION ---
+const deleteUserById = asyncHandler(async (req, res) => {
+  // 1. Security Check: Ensure the requester is an admin
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ message: "Forbidden: You do not have permission." });
+  }
+
+  // 2. Get the ID of the user to delete from the URL parameter
+  const userIdToDelete = req.params.id;
+
+  // Optional Safety Check: Prevent an admin from deleting their own account via this endpoint
+  if (req.user.userId === userIdToDelete) {
+    return res.status(400).json({ message: "Admin cannot delete their own account from this panel." });
+  }
+
+  // 3. Find and delete the user by their business ID (e.g., USR-...)
+  const user = await User.findOneAndDelete({ userId: userIdToDelete });
+
+  // 4. If no user was found with that ID, return an error
+  if (!user) {
+    return res.status(404).json({ message: `User with ID ${userIdToDelete} not found.` });
+  }
+
+  // 5. Send a success confirmation
+  res.status(200).json({ message: `User "${user.fName} ${user.lName}" deleted successfully.` });
+});
+
+
 module.exports = {
   registerUser,
   loginUser,
@@ -547,5 +590,7 @@ module.exports = {
   getAccountStats,
   downloadAccountSummaryPdf,
   getUserById,
-  getUserProfile
+  getUserProfile,
+  getAllUsers,
+  deleteUserById
 };
