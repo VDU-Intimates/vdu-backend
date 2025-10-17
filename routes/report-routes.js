@@ -6,4 +6,6 @@ const validateToken = require("../middleware/validate-token-handler");
 // This line must match the function name exported from the controller
 router.get('/monthly-orders', validateToken, reportController.generateMonthlyReportCSV);
 
+router.get('/all-users', validateToken, reportController.generateUserReportCSV);
+
 module.exports = router;

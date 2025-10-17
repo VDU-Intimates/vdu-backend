@@ -1,5 +1,58 @@
 const { Parser } = require('json2csv');
 const Order = require('../models/order-model');
+const User = require('../models/user-model');
+
+const generateUserReportCSV = async (req, res) => {
+  try {
+    // Security check: Only admins can generate this report
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: "Forbidden: You do not have permission." });
+    }
+
+    // Fetch all users, excluding their passwords for security
+    const users = await User.find({}).select('-password').sort({ createdAt: -1 });
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: "No users found to generate a report." });
+    }
+
+    // Prepare the data for the CSV, formatting as needed
+    const reportData = users.map(user => ({
+      userId: user.userId,
+      fullName: `${user.fName || ''} ${user.lName || ''}`.trim(),
+      email: user.email,
+      contact: user.contact || 'N/A',
+      address: user.address || 'N/A',
+      role: user.role,
+      joinedOn: new Date(user.createdAt).toLocaleDateString('en-CA'), // YYYY-MM-DD format
+    }));
+
+    const fields = [
+      { label: 'User ID', value: 'userId' },
+      { label: 'Full Name', value: 'fullName' },
+      { label: 'Email', value: 'email' },
+      { label: 'Contact', value: 'contact' },
+      { label: 'Address', value: 'address' },
+      { label: 'Role', value: 'role' },
+      { label: 'Joined On', value: 'joinedOn' },
+    ];
+
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(reportData);
+
+    const today = new Date().toLocaleDateString('en-CA');
+    const filename = `User-Report-${today}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    res.status(200).send(csv);
+
+  } catch (error) {
+    console.error("Error generating user CSV report:", error);
+    res.status(500).json({ message: "Server error while generating report." });
+  }
+};
 
 const generateMonthlyReportCSV = async (req, res) => {
   try {
@@ -94,5 +147,6 @@ const generateMonthlyReportCSV = async (req, res) => {
 };
 
 module.exports = { 
-    generateMonthlyReportCSV 
+    generateMonthlyReportCSV,
+    generateUserReportCSV
 };
