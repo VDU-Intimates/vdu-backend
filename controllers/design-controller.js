@@ -70,6 +70,27 @@ async function listDesigns(req, res) {
   }
 }
 
+async function listLatestDesigns(req, res) {
+  try {
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 5));
+
+    const isAdmin = req.user?.role === 'Admin';
+    // Admin => ALL users' designs; Non-admin => only their own
+    const filter = isAdmin ? {} : { userId: req.user.id };
+
+    const rows = await Design.find(filter)
+      .sort({ createdAt: -1, _id: -1 }) // newest created first, stable tie-break
+      .limit(limit)
+      .select("designUrl productName productId createdAt imageUrls texts")
+      .lean();
+
+    res.json({ data: rows, limit });
+  } catch (err) {
+    console.error("listLatestDesigns error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
 /* =========================
    POST /api/designs
    body: { designUrl, imageUrls[], texts[], productId?, productName? }
@@ -333,4 +354,5 @@ module.exports = {
   createDesign,
   deleteDesign,
   exportDesignsPdf, // <--- NEW
+  listLatestDesigns
 };
