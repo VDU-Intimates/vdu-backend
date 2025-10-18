@@ -12,7 +12,9 @@ const {
   getUserProfile,
   getAllUsers,
   deleteUserById,
-  getUserOrderSummary
+  getUserOrderSummary,
+  createAdminUser,
+  updateAdminUser
 } = require("../controllers/user-controller");
 
 const validateToken = require("../middleware/validate-token-handler");
@@ -24,10 +26,12 @@ router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/verify-otp", verifyOtp);
 router.post("/request-otp", reSendOtp);
+router.post("/users/create-admin", validateToken, createAdminUser);
 
 // --- Current User ("Me") Routes (Protected) ---
 router.get("/me", validateToken, getUser);
 router.patch("/me", validateToken, updateUser);
+router.patch("/users/:id", validateToken, updateAdminUser);
 router.delete("/me", validateToken, deleteUser); 
 
 // --- Admin Profile Route (Protected) ---
