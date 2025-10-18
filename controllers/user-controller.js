@@ -298,6 +298,33 @@ const getUser = asyncHandler(async (req, res) => {
   return res.json({ user: safeUser });
 });
 
+const getUserById = asyncHandler(async (req, res) => {
+  // Uses ID from URL parameter: req.params.id (Mongoose _id)
+  const idFromUrl = req.params.id;
+  
+  if (!idFromUrl) return res.status(400).json({ message: "User ID is required." });
+
+  // Optional: Check if the requesting user (req.user?.id) is authorized to view this user's data
+  // For invoice viewing, we assume a token holder can view the linked user's data.
+
+  const user = await User.findById(idFromUrl);
+  if (!user) return res.status(404).json({ message: "User not found." });
+
+  // Return only the necessary/safe fields for the invoice
+  const safeUser = {
+    userId: user.userId,
+    fName: user.fName,
+    lName:  user.lName,
+    email:     user.email,
+    // Note: Do NOT return the password hash
+    address:   user.address || null,
+    contact:   user.contact || null,
+    role:      user.role, // Added role for context
+  };
+
+  return res.json({ user: safeUser });
+});
+
 // PATCH /me  (protected) — optional profile update
 const updateUser = asyncHandler(async (req, res) => {
   const userId = req.user?.id;
@@ -490,6 +517,123 @@ const downloadAccountSummaryPdf = asyncHandler(async (req, res) => {
   doc.end();
 });
 
+const getUserProfile = asyncHandler(async (req, res) => {
+  // The `validateToken` middleware puts the user's ID on `req.user`
+  const userId = req.user.userId;
+  if (!userId) {
+    return res.status(401).json({ message: "User not authenticated" });
+  }
+
+  // Find the user in the database but select only the necessary fields
+  const user = await User.findOne({ userId: userId }).select('fName lName email photoURL');
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  // Return the user's profile data
+  res.status(200).json(user);
+});
+
+const getAllUsers = asyncHandler(async (req, res) => {
+  // 1. Security Check: Ensure the requester is an admin
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ message: "Forbidden: You do not have permission to access this resource." });
+  }
+
+  // 2. Fetch all users from the database
+  //    - .select('-password') is a crucial security measure to exclude password hashes.
+  //    - .sort({ createdAt: -1 }) shows the newest users first.
+  const users = await User.find({}).select('-password').sort({ createdAt: -1 });
+
+  // 3. Return the array of users
+  res.status(200).json(users);
+});
+
+// --- ADD THIS NEW FUNCTION ---
+const deleteUserById = asyncHandler(async (req, res) => {
+  // 1. Security Check: Ensure the requester is an admin
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ message: "Forbidden: You do not have permission." });
+  }
+
+  // 2. Get the ID of the user to delete from the URL parameter
+  const userIdToDelete = req.params.id;
+
+  // Optional Safety Check: Prevent an admin from deleting their own account via this endpoint
+  if (req.user.userId === userIdToDelete) {
+    return res.status(400).json({ message: "Admin cannot delete their own account from this panel." });
+  }
+
+  // 3. Find and delete the user by their business ID (e.g., USR-...)
+  const user = await User.findOneAndDelete({ userId: userIdToDelete });
+
+  // 4. If no user was found with that ID, return an error
+  if (!user) {
+    return res.status(404).json({ message: `User with ID ${userIdToDelete} not found.` });
+  }
+
+  // 5. Send a success confirmation
+  res.status(200).json({ message: `User "${user.fName} ${user.lName}" deleted successfully.` });
+});
+
+const getUserOrderSummary = asyncHandler(async (req, res) => {
+  // 1. Security Check
+  if (req.user.role !== 'Admin') {
+     return res.status(403).json({ message: "Forbidden: You do not have permission." });
+  }
+
+  // 2. Get the user's BUSINESS ID from the URL
+  const targetUserBusinessId = req.params.id; // e.g., "USR-123"
+  if (!targetUserBusinessId) {
+    return res.status(400).json({ message: "User ID is required." });
+  }
+
+  // 3. --- NEW STEP: Find the user by their business ID ---
+  const user = await User.findOne({ userId: targetUserBusinessId }).select('_id');
+  if (!user) {
+    return res.status(404).json({ message: "User not found." });
+  }
+  
+  // Now you have the internal Mongoose ID
+  const userMongooseId = user._id;
+
+  // 4. Find orders using the MONGOOSE ID
+  const userOrders = await Order.find({ userId: userMongooseId }); // <-- FIX IS HERE
+
+  if (!userOrders || userOrders.length === 0) {
+    return res.status(200).json({ 
+      totalOrders: 0,
+      totalSpent: 0,
+      lastOrderDate: null,
+      statusCounts: {}
+   });
+  }
+
+  // 5. Calculate summary statistics (this part is unchanged)
+  const totalOrders = userOrders.length;
+  const totalSpent = userOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  
+  const lastOrderDate = userOrders.reduce((latest, order) => {
+      const orderDate = new Date(order.date);
+      return !latest || orderDate > latest ? orderDate : latest;
+  }, null);
+
+  const statusCounts = userOrders.reduce((acc, order) => {
+    acc[order.orderStatus] = (acc[order.orderStatus] || 0) + 1;
+    return acc;
+  }, {});
+
+  // 6. Return the summary (this part is unchanged)
+  res.status(200).json({
+    totalOrders,
+    totalSpent,
+    lastOrderDate: lastOrderDate ? lastOrderDate.toISOString() : null,
+    statusCounts
+  });
+});
+
+
 module.exports = {
   registerUser,
   loginUser,
@@ -501,4 +645,9 @@ module.exports = {
   reSendOtp,
   getAccountStats,
   downloadAccountSummaryPdf,
+  getUserById,
+  getUserProfile,
+  getAllUsers,
+  deleteUserById,
+  getUserOrderSummary
 };

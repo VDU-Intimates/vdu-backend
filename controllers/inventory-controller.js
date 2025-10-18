@@ -69,8 +69,8 @@ async function createProduct(req, res) {
       productId, productName, description, price, stock, photoUrl,
       colors, sizes, category,
     } = req.body || {};
-
-    if (!productName || !description || price == null || !photoUrl || !category) {
+    const photoUrls = toStringArray(photoUrl);
+    if (!productName || !description || price == null || photoUrls.length === 0 || !category) {
       return res.status(400).json({ error: "Missing required fields." });
     }
 
@@ -81,7 +81,7 @@ async function createProduct(req, res) {
       price: Number(price),
       // stock: Math.max(0, Number(stock ?? 0)),
       
-      photoUrl: String(photoUrl).trim(),
+      photoUrl: photoUrls.slice(0, 5), 
       colors: toStringArray(colors),
       sizes:  toStringArray(sizes),
       category: String(category).trim(),
@@ -119,7 +119,7 @@ async function updateProductById(req, res) {
     if (patch.productName != null) patch.productName = String(patch.productName).trim();
     if (patch.description != null) patch.description = String(patch.description).trim();
     if (patch.price != null) patch.price = Number(patch.price);
-    if (patch.photoUrl != null) patch.photoUrl = String(patch.photoUrl).trim();
+    if ("photoUrl" in patch) patch.photoUrl = toStringArray(patch.photoUrl).slice(0, 5);
     if (patch.category != null) patch.category = String(patch.category).trim();
     if ("colors" in patch) patch.colors = toStringArray(patch.colors);
     if ("sizes"  in patch) patch.sizes  = toStringArray(patch.sizes);
