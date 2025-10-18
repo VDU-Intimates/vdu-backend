@@ -30,6 +30,18 @@ const deliverySchema = new mongoose.Schema({
     },
     email: {
         type: String,
+    },
+    // GeoJSON Point for location heatmap
+    coordinates: {
+        type: {
+            type: String,
+            enum: ['Point'],
+            default: 'Point'
+        },
+        coordinates: {
+            type: [Number],
+            default: []
+        }
     }
 });
 
