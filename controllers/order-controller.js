@@ -14,7 +14,8 @@ function bad(msg, code = 400) {
 
 // --- Place Order (used by BOTH COD and ONLINE) ---
 const placeOrder = async (req, res) => {
-  const userId = req.user?.id; // assume your auth middleware sets this
+  const io = req.app.get('socketio');
+  const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: 'User is not authorized' });
 
   const {
@@ -28,32 +29,22 @@ const placeOrder = async (req, res) => {
     paymentIntentId
   } = req.body;
 
-  // 1) Validate
   try {
-    if (!paymentType || !['COD', 'ONLINE'].includes(paymentType)) {
-      throw bad('Invalid or missing paymentType');
-    }
-    if (!Array.isArray(items) || items.length === 0) {
-      throw bad('Items array is required and must not be empty');
-    }
-
+    if (!paymentType || !['COD', 'ONLINE'].includes(paymentType)) throw bad('Invalid or missing paymentType');
+    if (!Array.isArray(items) || items.length === 0) throw bad('Items array is required.');
     for (const it of items) {
-      if (!it.productId) throw bad('Each item requires productId');
-      if (!it.size) throw bad('Each item requires size');
-      if (!Number.isFinite(it.quantity) || it.quantity <= 0) throw bad('Invalid item.quantity');
-      if (!Number.isFinite(it.unitPrice) || it.unitPrice < 0) throw bad('Invalid item.unitPrice');
+      if (!it.productId || !it.size || !it.quantity || it.unitPrice == null) throw bad('Invalid item structure.');
     }
   } catch (e) {
     return res.status(e.status || 400).json({ message: e.message || 'Invalid request' });
   }
 
-  // 2) Transaction: create Order + OrderItems atomically
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
     const quantity = items.reduce((s, it) => s + Number(it.quantity || 0), 0);
     const orderDoc = await Order.create([{
-      userId,                          // keep as-is (string or ObjectId according to your model)
+      userId,
       paymentType,
       subTotal,
       deliverFee,
@@ -67,12 +58,11 @@ const placeOrder = async (req, res) => {
 
     const savedOrder = orderDoc[0];
 
-    // 3) Insert order items (flatten customization snapshot)
     const orderItems = items.map((it) => ({
       orderId: savedOrder.orderId,
       name: it.name || 'Item',
       productId: it.productId,
-      size: it.size, // IMPORTANT for fulfilment and invoice
+      size: it.size,
       customisedProductId: it.customisedProductId || null,
       quantity: it.quantity,
       unitPrice: it.unitPrice,
@@ -83,10 +73,18 @@ const placeOrder = async (req, res) => {
     }));
 
     await OrderItem.insertMany(orderItems, { session });
-
     await session.commitTransaction();
 
-    // 4) Return order + items so Invoice page can render lines immediately
+    // Create a complete order object for the real-time event
+    const hasCustomizedItems = items.some(item => item.isCustomized);
+    const orderForEvent = {
+      ...savedOrder.toObject(),
+      hasCustomizedItems: hasCustomizedItems
+    };
+    
+    console.log(`✅ Emitting 'new_order' event for ${orderForEvent.orderId}`);
+    io.emit('new_order', orderForEvent);
+
     return res.status(201).json({
       orderId: savedOrder.orderId,
       order: {

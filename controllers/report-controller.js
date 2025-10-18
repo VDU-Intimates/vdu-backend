@@ -1,4 +1,6 @@
 const { Parser } = require('json2csv');
+const axios = require('axios');
+const Delivery = require('../models/delivery-model');
 const Order = require('../models/order-model');
 const User = require('../models/user-model');
 
@@ -146,7 +148,62 @@ const generateMonthlyReportCSV = async (req, res) => {
   }
 };
 
+const getOrderLocations = async (req, res) => {
+  try {
+    // 1. Fetch recent orders to keep the map from getting too cluttered
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentOrders = await Order.find({ date: { $gte: thirtyDaysAgo } }).select('orderId');
+    const orderIds = recentOrders.map(o => o.orderId);
+
+    // 2. Find the delivery details for these orders
+    const deliveries = await Delivery.find({ orderId: { $in: orderIds } });
+
+    const locations = [];
+
+    for (const delivery of deliveries) {
+      // 3. If we already have coordinates, use them
+      if (delivery.coordinates && delivery.coordinates.coordinates.length === 2) {
+        // Leaflet expects [latitude, longitude]
+        locations.push([delivery.coordinates.coordinates[1], delivery.coordinates.coordinates[0]]);
+        continue;
+      }
+
+      // 4. If not, geocode the address using Nominatim (free OpenStreetMap service)
+      const addressQuery = encodeURIComponent(`${delivery.address}, Sri Lanka`);
+      const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${addressQuery}`;
+      
+      try {
+        const geoResponse = await axios.get(geocodeUrl, {
+            headers: { 'User-Agent': 'VDU-Intimates-Admin-Panel/1.0' } // Good practice
+        });
+
+        if (geoResponse.data && geoResponse.data.length > 0) {
+          const { lat, lon } = geoResponse.data[0];
+          const latitude = parseFloat(lat);
+          const longitude = parseFloat(lon);
+          
+          locations.push([latitude, longitude]);
+
+          // 5. Save the coordinates back to the database for future use
+          delivery.coordinates.coordinates = [longitude, latitude];
+          await delivery.save();
+        }
+      } catch (geoError) {
+        console.warn(`Could not geocode address for order ${delivery.orderId}:`, delivery.address);
+      }
+    }
+    
+    res.status(200).json(locations);
+
+  } catch (error) {
+    console.error("Error fetching order locations:", error);
+    res.status(500).json({ message: "Server error while fetching locations." });
+  }
+};
+
 module.exports = { 
     generateMonthlyReportCSV,
-    generateUserReportCSV
+    generateUserReportCSV,
+    getOrderLocations
 };
