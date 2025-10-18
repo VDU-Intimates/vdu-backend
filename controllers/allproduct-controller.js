@@ -1,52 +1,142 @@
+
 // controllers/product-controller.js
-const Product = require("../models/allproduct-model");
+const mongoose = require("mongoose");
+const Product = require("../models/allproduct-model"); // <-- ensure path matches your project
+const Rating = require("../models/rating-model");   // <-- add the rating model from previous step
 
+/**
+ * Build a Mongo filter from query params
+ */
+function buildFilter(qs) {
+  const { q, category, color, size, minPrice, maxPrice } = qs || {};
+  const filter = {};
 
-//READ: 
-// GET /api/products?q=&category=&color=&size=&minPrice=&maxPrice=&sort=&page=&limit=
+  if (q) {
+    const rx = new RegExp(String(q), "i");
+    filter.$or = [{ productName: rx }, { description: rx }];
+  }
+
+  if (category) filter.category = String(category).trim();
+
+  if (color) filter.colors = { $in: [String(color).trim()] };
+  if (size)  filter.sizes  = { $in: [String(size).trim()] };
+
+  if (minPrice != null || maxPrice != null) {
+    filter.price = {};
+    if (minPrice != null) filter.price.$gte = Number(minPrice);
+    if (maxPrice != null) filter.price.$lte = Number(maxPrice);
+  }
+
+  return filter;
+}
+
+/**
+ * If the user requests sort by avgRating / ratingCount,
+ * we need an aggregation pipeline to compute ratings per product.
+ */
+function isRatingsSort(sort) {
+  if (!sort) return false;
+  const s = String(sort);
+  return s.includes("avgRating") || s.includes("ratingCount");
+}
+
+/**
+ * GET /api/products
+ * Query:
+ *  - q, category, color, size, minPrice, maxPrice
+ *  - sort (e.g., "-createdAt", "price", "-avgRating", "-ratingCount")
+ *  - page, limit
+ *  - includeRatings=1 to append avgRating & ratingCount
+ */
 async function listProducts(req, res) {
   try {
     const {
-      q,
-      category,
-      color,
-      size,
-      minPrice,
-      maxPrice,
       sort = "-createdAt",
       page = "1",
       limit = "20",
+      includeRatings,
     } = req.query;
 
-    const filter = {};
-
-    // text search on name & description
-    if (q) {
-      const rx = new RegExp(String(q), "i");
-      filter.$or = [{ productName: rx }, { description: rx }];
-    }
-
-    if (category) filter.category = new RegExp(String(category), "i");
-    if (color) filter.color = new RegExp(String(color), "i");
-    if (size) filter.size = new RegExp(String(size), "i");
-
-    if (minPrice != null || maxPrice != null) {
-      filter.price = {};
-      if (minPrice != null) filter.price.$gte = Number(minPrice);
-      if (maxPrice != null) filter.price.$lte = Number(maxPrice);
-    }
-
+    const filter = buildFilter(req.query);
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
 
+    const wantRatings = String(includeRatings || "") === "1";
+    const wantsRatingsSort = isRatingsSort(sort);
+
+    // If sorting by rating fields, use aggregation to compute and sort on the fly
+    if (wantRatings && wantsRatingsSort) {
+      const sortObj = {};
+      // support multi-field sorts like "-avgRating,ratingCount" if passed
+      String(sort)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((field) => {
+          if (!field) return;
+          const dir = field.startsWith("-") ? -1 : 1;
+          const key = field.replace(/^-/, "");
+          // only allow known sort fields from the outside for safety
+          if (["avgRating", "ratingCount", "createdAt", "price"].includes(key)) {
+            sortObj[key] = dir;
+          }
+        });
+      if (Object.keys(sortObj).length === 0) sortObj["avgRating"] = -1;
+
+      const pipeline = [
+        { $match: filter },
+        {
+          $lookup: {
+            from: "ratings",
+            let: { pid: "$productId" },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$productId", "$$pid"] } } },
+              { $group: { _id: null, avgRating: { $avg: "$value" }, ratingCount: { $sum: 1 } } },
+              { $project: { _id: 0, avgRating: { $round: ["$avgRating", 2] }, ratingCount: 1 } },
+            ],
+            as: "ratingSummary",
+          },
+        },
+        {
+          $addFields: {
+            avgRating: { $ifNull: [{ $arrayElemAt: ["$ratingSummary.avgRating", 0] }, 0] },
+            ratingCount: { $ifNull: [{ $arrayElemAt: ["$ratingSummary.ratingCount", 0] }, 0] },
+          },
+        },
+        { $project: { ratingSummary: 0 } },
+        { $sort: sortObj },
+        { $skip: skip },
+        { $limit: limitNum },
+      ];
+
+      const [docs, totalAgg] = await Promise.all([
+        Product.aggregate(pipeline),
+        Product.countDocuments(filter),
+      ]);
+
+      return res.json({ data: docs, total: totalAgg, page: pageNum, limit: limitNum });
+    }
+
+    // Otherwise: simple find(), then (optionally) attach ratings in one aggregate
     const [docs, total] = await Promise.all([
-      Product.find(filter)
-        .sort(String(sort))
-        .limit(limitNum)
-        .skip((pageNum - 1) * limitNum)
-        .lean(),
+      Product.find(filter).sort(String(sort)).skip(skip).limit(limitNum).lean(),
       Product.countDocuments(filter),
     ]);
+
+    if (wantRatings && docs.length) {
+      const ids = docs.map((p) => String(p.productId));
+      const summaries = await Rating.aggregate([
+        { $match: { productId: { $in: ids } } },
+        { $group: { _id: "$productId", avgRating: { $avg: "$value" }, ratingCount: { $sum: 1 } } },
+        { $project: { _id: 0, productId: "$_id", avgRating: { $round: ["$avgRating", 2] }, ratingCount: 1 } },
+      ]);
+      const map = Object.fromEntries(summaries.map((s) => [s.productId, s]));
+      for (const p of docs) {
+        p.avgRating = map[p.productId]?.avgRating || 0;
+        p.ratingCount = map[p.productId]?.ratingCount || 0;
+      }
+    }
 
     res.json({ data: docs, total, page: pageNum, limit: limitNum });
   } catch (err) {
@@ -55,26 +145,40 @@ async function listProducts(req, res) {
   }
 }
 
-// helper: resolve by productId (preferred) or Mongo _id fallback
+/**
+ * Helper: resolve by productId first, then _id fallback
+ */
 async function findByParamId(id) {
-  // prefer productId
   let doc = await Product.findOne({ productId: id }).lean();
   if (doc) return doc;
-
-  // fallback to _id if someone passed a Mongo ObjectId
   try {
-    doc = await Product.findById(id).lean();
-  } catch (_) {
-    /* ignore cast errors */
-  }
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      doc = await Product.findById(id).lean();
+    }
+  } catch (_) {}
   return doc;
 }
 
-// READ: GET /api/products/:id   (id = productId or Mongo _id)
+/**
+ * GET /api/products/:id
+ * Supports ?includeRatings=1 to append { avgRating, ratingCount }
+ */
 async function getProductById(req, res) {
   try {
+    const wantRatings = String(req.query.includeRatings || "") === "1";
     const doc = await findByParamId(req.params.id);
     if (!doc) return res.status(404).json({ error: "Not found" });
+
+    if (wantRatings) {
+      const [summary] = await Rating.aggregate([
+        { $match: { productId: String(doc.productId) } },
+        { $group: { _id: "$productId", avgRating: { $avg: "$value" }, ratingCount: { $sum: 1 } } },
+        { $project: { _id: 0, avgRating: { $round: ["$avgRating", 2] }, ratingCount: 1 } },
+      ]);
+      doc.avgRating = summary?.avgRating || 0;
+      doc.ratingCount = summary?.ratingCount || 0;
+    }
+
     res.json(doc);
   } catch (err) {
     console.error("getProductById error:", err);
@@ -82,144 +186,63 @@ async function getProductById(req, res) {
   }
 }
 
-// POST /api/products   (admin only)
-// body must include required fields from schema
-// async function createProduct(req, res) {
-//   try {
-//     const {
-//       productId,          // optional (autogenerate if missing)
-//       productName,
-//       description,
-//       price,
-//       photoUrl,
-//       color,
-//       size,
-//       category,
-//     } = req.body || {};
+/**
+ * GET /api/products/top-rated?limit=4
+ * Returns top N products by avgRating (desc), ratingCount (desc).
+ * If none have ratings, returns latest arrivals instead.
+ */
+async function getTopRatedProducts(req, res) {
+  try {
+    const limit = Math.max(1, Math.min(12, Number(req.query.limit) || 4));
 
-//     // validate required fields
-//     if (
-//       !productName ||
-//       !description ||
-//       price == null ||
-//       !photoUrl ||
-//       !color ||
-//       !size ||
-//       !category
-//     ) {
-//       return res.status(400).json({ error: "Missing required fields." });
-//     }
+    // Compute top-rated from ratings, join products
+    const topRated = await Rating.aggregate([
+      { $group: { _id: "$productId", avgRating: { $avg: "$value" }, ratingCount: { $sum: 1 } } },
+      { $project: { _id: 0, productId: "$_id", avgRating: { $round: ["$avgRating", 2] }, ratingCount: 1 } },
+      { $sort: { avgRating: -1, ratingCount: -1 } },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: "products", // name of Product collection; confirm via Product.collection.name if needed
+          localField: "productId",
+          foreignField: "productId",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      {
+        $project: {
+          productId: 1,
+          avgRating: 1,
+          ratingCount: 1,
+          productName: "$product.productName",
+          price: "$product.price",
+          photoUrl: "$product.photoUrl",
+          category: "$product.category",
+          sizes: "$product.sizes",
+        },
+      },
+    ]);
 
-//     const payload = {
-//       productId: productId?.trim(),
-//       productName: String(productName).trim(),
-//       description: String(description).trim(),
-//       price: Number(price),
-//       photoUrl: String(photoUrl).trim(),
-//       color: String(color).trim(),
-//       size: String(size).trim(),
-//       category: String(category).trim(),
-//     };
+    if (topRated.length > 0) return res.json({ data: topRated });
 
-//     const doc = await Product.create(payload);
-//     res.status(201).json(doc);
-//   } catch (err) {
-//     console.error("createProduct error:", err);
-//     if (err && err.code === 11000) {
-//       // duplicate key (likely productId)
-//       return res.status(409).json({ error: "productId must be unique" });
-//     }
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }
+    // Fallback: newest arrivals
+    const newest = await Product.find({})
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select("productId productName price photoUrl category sizes")
+      .lean();
 
-// // PATCH /api/products/:id   (admin only)
-// // id can be productId or Mongo _id
-// async function updateProductById(req, res) {
-//   try {
-//     const id = req.params.id;
-
-//     // Only allow these fields to be patched; productId is immutable by default
-//     const allowed = [
-//       "productName",
-//       "description",
-//       "price",
-//       "photoUrl",
-//       "color",
-//       "size",
-//       "category",
-//     ];
-//     const patch = {};
-
-//     for (const k of allowed) {
-//       if (req.body[k] !== undefined) patch[k] = req.body[k];
-//     }
-
-//     // normalize
-//     if (patch.productName != null) patch.productName = String(patch.productName).trim();
-//     if (patch.description != null) patch.description = String(patch.description).trim();
-//     if (patch.price != null) patch.price = Number(patch.price);
-//     if (patch.photoUrl != null) patch.photoUrl = String(patch.photoUrl).trim();
-//     if (patch.color != null) patch.color = String(patch.color).trim();
-//     if (patch.size != null) patch.size = String(patch.size).trim();
-//     if (patch.category != null) patch.category = String(patch.category).trim();
-
-//     // find target
-//     const byProductId = await Product.findOneAndUpdate(
-//       { productId: id },
-//       { $set: patch },
-//       { new: true, runValidators: true }
-//     ).lean();
-
-//     if (byProductId) return res.json(byProductId);
-
-//     // fallback _id
-//     let byMongoId = null;
-//     try {
-//       byMongoId = await Product.findByIdAndUpdate(
-//         id,
-//         { $set: patch },
-//         { new: true, runValidators: true }
-//       ).lean();
-//     } catch (_) {}
-
-//     if (!byMongoId) return res.status(404).json({ error: "Not found" });
-//     res.json(byMongoId);
-//   } catch (err) {
-//     console.error("updateProductById error:", err);
-//     if (err && err.code === 11000) {
-//       return res.status(409).json({ error: "Duplicate key" });
-//     }
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }
-
-// // DELETE /api/products/:id   (admin only)
-// // id can be productId or Mongo _id
-// async function deleteProductById(req, res) {
-//   try {
-//     const id = req.params.id;
-
-//     const byProductId = await Product.findOneAndDelete({ productId: id }).lean();
-//     if (byProductId) return res.json({ success: true });
-
-//     let byMongoId = null;
-//     try {
-//       byMongoId = await Product.findByIdAndDelete(id).lean();
-//     } catch (_) {}
-
-//     if (!byMongoId) return res.status(404).json({ error: "Not found" });
-//     res.json({ success: true });
-//   } catch (err) {
-//     console.error("deleteProductById error:", err);
-//     res.status(500).json({ error: "Server error" });
-//   }
-// }
+    res.json({ data: newest.map((p) => ({ ...p, avgRating: 0, ratingCount: 0 })) });
+  } catch (err) {
+    console.error("getTopRatedProducts error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
 
 module.exports = {
   listProducts,
   getProductById,
-  // createProduct,
-  // updateProductById,
-  // deleteProductById,
+  getTopRatedProducts,
 };
+
