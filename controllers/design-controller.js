@@ -29,7 +29,6 @@ function toISODateOnly(d) {
 async function listDesigns(req, res) {
   try {
     const page  = Math.max(1, Number(req.query.page)  || 1);
-    // ✅ Default to 5, but allow the client to ask for more (up to 1000)
     const limit = Math.min(1000, Math.max(1, Number(req.query.limit) || 5));
 
     const { from, to, productName, q } = req.query || {};
@@ -58,8 +57,8 @@ async function listDesigns(req, res) {
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        // ✅ Return all fields your report needs
-        .select("designUrl productName createdAt imageUrls texts")
+        // CHANGED: include productId so FE can add the right item to cart
+        .select("designUrl productName productId createdAt imageUrls texts") // CHANGED
         .lean(),
       Design.countDocuments(filter),
     ]);
