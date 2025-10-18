@@ -681,7 +681,51 @@ const getAllUsers = asyncHandler(async (req, res) => {
   res.status(200).json(users);
 });
 
-// --- ADD THIS NEW FUNCTION ---
+async function sendAccountDeletionEmail({ email, fName }) {
+  const plainText = `
+    Hello ${fName},
+
+    This is a notification to inform you that your account with VDU Intimates (${email}) has been permanently deleted by an administrator.
+
+    If you believe this was in error or have any questions, please contact our support team.
+
+    Thank you,
+    The VDU Intimates Team
+  `.trim();
+
+  const htmlText = `
+    <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; color: #222;">
+      <h2 style="margin:0 0 8px 0; color:#D9534F;">Account Deletion Notice</h2>
+      <p style="margin:0 0 12px 0;">Hello ${fName},</p>
+      <p style="margin:0 0 12px 0;">
+        This is a notification to inform you that your VDU Intimates account (<strong>${email}</strong>) 
+        has been permanently deleted by an administrator.
+      </p>
+      <p style="margin:12px 0 0 0; color:#666;">
+        If you believe this was in error or have any questions, please contact our support team immediately.
+      </p>
+      <hr style="margin:18px 0; border:none; border-top:1px solid #eee;" />
+      <p style="margin-top:12px; font-size:13px; color:#888;">— VDU Intimates</p>
+    </div>
+  `.trim();
+
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_USER, // Sender
+      to: email, // Receiver
+      subject: 'Your VDU Intimates Account Has Been Deleted',
+      text: plainText,
+      html: htmlText
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`[Account Deletion] Email sent to ${email}`);
+  } catch (error) {
+    // Log the error, but don't throw, as the user deletion was already successful.
+    console.error(`Failed to send deletion email to ${email}:`, error);
+  }
+}
+
 const deleteUserById = asyncHandler(async (req, res) => {
   // 1. Security Check: Ensure the requester is an admin
   if (req.user.role !== 'Admin') {
@@ -703,6 +747,14 @@ const deleteUserById = asyncHandler(async (req, res) => {
   if (!user) {
     return res.status(404).json({ message: `User with ID ${userIdToDelete} not found.` });
   }
+
+  sendAccountDeletionEmail({
+    email: user.email,
+    fName: user.fName || "User" // Use 'User' as a fallback if fName is missing
+  }).catch(err => {
+    // Even if email fails, the delete was successful. Just log it.
+    console.error("Non-blocking error sending deletion email:", err);
+  });
 
   // 5. Send a success confirmation
   res.status(200).json({ message: `User "${user.fName} ${user.lName}" deleted successfully.` });
