@@ -12,7 +12,10 @@ const userSchema = new mongoose.Schema(
     address: String,
     contact: String,
     photoURL: {type : String, default: null},
-    role: {type: String,enum: ["Customer", "Admin"],default: "Customer"} 
+    role: {type: String,enum: ["Customer", "Admin"],default: "Customer"}, 
+
+    provider: { type: String, enum: ["local", "google"], default: "local" },
+    googleId: { type: String, index: true },
   },
   { timestamps: true }
 );
