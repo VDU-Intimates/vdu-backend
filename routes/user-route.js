@@ -11,7 +11,8 @@ const {
   downloadAccountSummaryPdf,
   getUserProfile,
   getAllUsers,
-  deleteUserById
+  deleteUserById,
+  getUserOrderSummary
 } = require("../controllers/user-controller");
 
 const validateToken = require("../middleware/validate-token-handler");
@@ -42,5 +43,6 @@ router.delete("/users/:id", validateToken, deleteUserById);
 // --- Report Routes ---
 router.get("/account-stats", validateToken, getAccountStats);
 router.get("/account-summary", validateToken, downloadAccountSummaryPdf);
+router.get('/users/:id/order-summary', validateToken, getUserOrderSummary);
 
 module.exports = router;

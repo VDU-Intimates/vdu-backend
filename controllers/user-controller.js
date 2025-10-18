@@ -577,6 +577,62 @@ const deleteUserById = asyncHandler(async (req, res) => {
   res.status(200).json({ message: `User "${user.fName} ${user.lName}" deleted successfully.` });
 });
 
+const getUserOrderSummary = asyncHandler(async (req, res) => {
+  // 1. Security Check
+  if (req.user.role !== 'Admin') {
+     return res.status(403).json({ message: "Forbidden: You do not have permission." });
+  }
+
+  // 2. Get the user's BUSINESS ID from the URL
+  const targetUserBusinessId = req.params.id; // e.g., "USR-123"
+  if (!targetUserBusinessId) {
+    return res.status(400).json({ message: "User ID is required." });
+  }
+
+  // 3. --- NEW STEP: Find the user by their business ID ---
+  const user = await User.findOne({ userId: targetUserBusinessId }).select('_id');
+  if (!user) {
+    return res.status(404).json({ message: "User not found." });
+  }
+  
+  // Now you have the internal Mongoose ID
+  const userMongooseId = user._id;
+
+  // 4. Find orders using the MONGOOSE ID
+  const userOrders = await Order.find({ userId: userMongooseId }); // <-- FIX IS HERE
+
+  if (!userOrders || userOrders.length === 0) {
+    return res.status(200).json({ 
+      totalOrders: 0,
+      totalSpent: 0,
+      lastOrderDate: null,
+      statusCounts: {}
+   });
+  }
+
+  // 5. Calculate summary statistics (this part is unchanged)
+  const totalOrders = userOrders.length;
+  const totalSpent = userOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  
+  const lastOrderDate = userOrders.reduce((latest, order) => {
+      const orderDate = new Date(order.date);
+      return !latest || orderDate > latest ? orderDate : latest;
+  }, null);
+
+  const statusCounts = userOrders.reduce((acc, order) => {
+    acc[order.orderStatus] = (acc[order.orderStatus] || 0) + 1;
+    return acc;
+  }, {});
+
+  // 6. Return the summary (this part is unchanged)
+  res.status(200).json({
+    totalOrders,
+    totalSpent,
+    lastOrderDate: lastOrderDate ? lastOrderDate.toISOString() : null,
+    statusCounts
+  });
+});
+
 
 module.exports = {
   registerUser,
@@ -592,5 +648,6 @@ module.exports = {
   getUserById,
   getUserProfile,
   getAllUsers,
-  deleteUserById
+  deleteUserById,
+  getUserOrderSummary
 };
