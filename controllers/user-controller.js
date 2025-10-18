@@ -764,6 +764,106 @@ const getUserOrderSummary = asyncHandler(async (req, res) => {
   });
 });
 
+const createAdminUser = asyncHandler(async (req, res) => {
+  // 1. Security Check: Ensure the requester is an admin
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ message: "Forbidden: You do not have permission." });
+  }
+
+  // 2. Get data from request
+  const { fName, lName, email, password } = req.body;
+
+  // 3. Validate
+  if (!fName || !lName || !email || !password) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  const exists = await User.findOne({ email: email.toLowerCase().trim() });
+  if (exists) {
+    return res.status(409).json({ message: "Email already in use." });
+  }
+
+  // 4. Hash password
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(password, salt);
+
+  // 5. Create the new admin user
+  const user = await User.create({
+    fName: fName.trim(),
+    lName: lName.trim(),
+    email: email.toLowerCase().trim(),
+    password: passwordHash,
+    role: "Admin", // <-- Set role explicitly
+    // Add other fields as undefined so the model uses defaults
+    address: undefined,
+    contact: undefined,
+    photoURL: null,
+  });
+
+  // 6. Return the new user (without password)
+  const safeUser = {
+    userId: user.userId,
+    fName: user.fName,
+    lName: user.lName,
+    email: user.email,
+    role: user.role,
+    createdAt: user.createdAt,
+  };
+  
+  return res.status(201).json({ user: safeUser, message: "Admin account created successfully." });
+});
+
+const updateAdminUser = asyncHandler(async (req, res) => {
+  // 1. Security Check: Ensure the requester is an admin
+  if (req.user.role !== 'Admin') {
+    return res.status(403).json({ message: "Forbidden: You do not have permission." });
+  }
+
+  // 2. Get user ID from URL and data from body
+  const targetUserId = req.params.id; // This is the business ID (e.g., USR-...)
+  const { fName, lName, email, password } = req.body;
+
+  // 3. Find the user to update
+  const user = await User.findOne({ userId: targetUserId });
+  if (!user) {
+    return res.status(404).json({ message: "User not found." });
+  }
+
+  // 4. Check for email conflict if email is being changed
+  if (email && email.toLowerCase().trim() !== user.email) {
+    const emailInUse = await User.findOne({ email: email.toLowerCase().trim() });
+    if (emailInUse) {
+      return res.status(409).json({ message: "Email already in use." });
+    }
+    user.email = email.toLowerCase().trim();
+  }
+
+  // 5. Update other fields
+  if (fName) user.fName = fName.trim();
+  if (lName) user.lName = lName.trim();
+
+  // 6. Update password ONLY if a new one was provided
+  if (password) {
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+  }
+
+  // 7. Save the changes
+  await user.save();
+
+  // 8. Return the updated, safe user
+  const safeUser = {
+    userId: user.userId,
+    fName: user.fName,
+    lName: user.lName,
+    email: user.email,
+    role: user.role,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt, // Include updatedAt
+  };
+
+  return res.status(200).json({ user: safeUser, message: "Admin account updated successfully." });
+});
 
 module.exports = {
   registerUser,
@@ -784,4 +884,6 @@ module.exports = {
   googleSignIn,
   uploadProfilePhoto,
   deleteProfilePhoto,
+  createAdminUser,
+  updateAdminUser
 };
