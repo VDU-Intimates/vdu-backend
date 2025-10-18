@@ -2,6 +2,7 @@
 const Product = require("../models/allproduct-model");
 
 
+//READ: 
 // GET /api/products?q=&category=&color=&size=&minPrice=&maxPrice=&sort=&page=&limit=
 async function listProducts(req, res) {
   try {
@@ -69,7 +70,7 @@ async function findByParamId(id) {
   return doc;
 }
 
-// GET /api/products/:id   (id = productId or Mongo _id)
+// READ: GET /api/products/:id   (id = productId or Mongo _id)
 async function getProductById(req, res) {
   try {
     const doc = await findByParamId(req.params.id);

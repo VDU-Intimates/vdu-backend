@@ -14,6 +14,7 @@ function signAccessToken(user) {
   );
 }
 
+// CREATE:
 // POST /register
 // body: { firstName, lastName, email, phone?, address?, password }
 const registerUser = asyncHandler(async (req, res) => {
@@ -58,6 +59,7 @@ const registerUser = asyncHandler(async (req, res) => {
   return res.status(201).json({ token, user: safeUser });
 });
 
+// READ:
 // POST /login
 // body: { email, password }
 const loginUser = asyncHandler(async (req, res) => {
@@ -89,7 +91,8 @@ const loginUser = asyncHandler(async (req, res) => {
   return res.json({ token, user: safeUser });
 });
 
-// GET /me  (protected)
+// READ:
+//  GET /me  (protected)
 const getUser = asyncHandler(async (req, res) => {
   // set by JWT middleware: req.user = { id, email, iat, exp }
   const userId = req.user?.id;
@@ -113,7 +116,8 @@ const getUser = asyncHandler(async (req, res) => {
   return res.json({ user: safeUser });
 });
 
-// PATCH /me  (protected) — optional profile update
+//UPADTE:
+//  PATCH /me  (protected) — optional profile update
 // body: { firstName?, lastName?, phone?, address? }
 const updateUser = asyncHandler(async (req, res) => {
   const userId = req.user?.id;

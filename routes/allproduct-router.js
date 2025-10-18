@@ -25,7 +25,7 @@ function requireRole(role) {
 
 const router = express.Router();
 
-// Public
+//READ: Public
 router.get("/", listProducts);
 router.get("/:id", getProductById);
 
