@@ -7,7 +7,8 @@ const {
   createDesign,
   deleteDesign,
   updateDesign,
-  exportDesignsPdf
+  exportDesignsPdf,
+  listLatestDesigns
 } = require("../controllers/design-controller");
 
 const router = express.Router();
@@ -17,4 +18,6 @@ router.get("/", listDesigns);
 router.post("/", createDesign);
 router.delete("/:id", deleteDesign);
 router.get("/report", exportDesignsPdf);
+router.get("/latest", validateToken, listLatestDesigns);
+
 module.exports = router;
