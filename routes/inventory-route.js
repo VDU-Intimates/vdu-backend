@@ -36,3 +36,4 @@ router.delete("/:id", validateToken, requireRole("Admin"), deleteProductById);
 router.get("/report", exportProductsCsv); // you can protect with validateToken if needed
 
 module.exports = router;
+
