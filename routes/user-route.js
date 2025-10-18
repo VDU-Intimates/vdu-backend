@@ -12,7 +12,10 @@ const {
   getUserProfile,
   getAllUsers,
   deleteUserById,
-  getUserOrderSummary
+  getUserOrderSummary,
+  googleSignIn,
+  uploadProfilePhoto,
+  deleteProfilePhoto,
 } = require("../controllers/user-controller");
 
 const validateToken = require("../middleware/validate-token-handler");
@@ -24,6 +27,9 @@ router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/verify-otp", verifyOtp);
 router.post("/request-otp", reSendOtp);
+
+//Google Auth
+router.post("/google", googleSignIn);
 
 // --- Current User ("Me") Routes (Protected) ---
 router.get("/me", validateToken, getUser);
@@ -44,5 +50,9 @@ router.delete("/users/:id", validateToken, deleteUserById);
 router.get("/account-stats", validateToken, getAccountStats);
 router.get("/account-summary", validateToken, downloadAccountSummaryPdf);
 router.get('/users/:id/order-summary', validateToken, getUserOrderSummary);
+
+
+router.post("/me/photo", validateToken, uploadProfilePhoto);
+router.delete("/me/photo", validateToken, deleteProfilePhoto);
 
 module.exports = router;
