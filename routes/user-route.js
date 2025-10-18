@@ -13,6 +13,9 @@ const {
   getAllUsers,
   deleteUserById,
   getUserOrderSummary,
+  googleSignIn,
+  uploadProfilePhoto,
+  deleteProfilePhoto,
   createAdminUser,
   updateAdminUser
 } = require("../controllers/user-controller");
@@ -27,6 +30,9 @@ router.post("/login", loginUser);
 router.post("/verify-otp", verifyOtp);
 router.post("/request-otp", reSendOtp);
 router.post("/users/create-admin", validateToken, createAdminUser);
+
+//Google Auth
+router.post("/google", googleSignIn);
 
 // --- Current User ("Me") Routes (Protected) ---
 router.get("/me", validateToken, getUser);
@@ -48,5 +54,9 @@ router.delete("/users/:id", validateToken, deleteUserById);
 router.get("/account-stats", validateToken, getAccountStats);
 router.get("/account-summary", validateToken, downloadAccountSummaryPdf);
 router.get('/users/:id/order-summary', validateToken, getUserOrderSummary);
+
+
+router.post("/me/photo", validateToken, uploadProfilePhoto);
+router.delete("/me/photo", validateToken, deleteProfilePhoto);
 
 module.exports = router;

@@ -8,7 +8,9 @@ const User = require("../models/user-model");
 const nodemailer = require('nodemailer');
 const Order = require("../models/order-model");          // <-- change if different
 const Design = require("../models/design-model");        // <-- change if different
-const BulkOrder = require("../models/bulk-order-model"); 
+const BulkOrder = require("../models/bulk-order-model");
+const { OAuth2Client } = require("google-auth-library");
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 require('dotenv').config();
 
 const otpStore = new Map();
@@ -34,6 +36,135 @@ function generateOtp() {
     // randomInt(min, maxExclusive)
     return crypto.randomInt(100000, 1000000).toString(); // 100000..999999
 }
+
+const uploadProfilePhoto = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  const { photoURL } = req.body || {};
+  if (!photoURL || typeof photoURL !== "string") {
+    return res.status(400).json({ message: "photoURL (string) is required" });
+  }
+
+  // Accept either data URL (base64) or https URL
+  const isDataUrl = /^data:image\/(png|jpe?g|webp|gif);base64,/.test(photoURL);
+  const isHttpUrl = /^https?:\/\/[^\s]+$/i.test(photoURL);
+
+  if (!isDataUrl && !isHttpUrl) {
+    return res.status(400).json({ message: "photoURL must be a valid https URL or a data:image/*;base64 URL" });
+  }
+
+  // (Optional) size check for data URLs (avoid huge strings)
+  if (isDataUrl) {
+    // rough length check: 5MB ≈ 6.7M base64 chars
+    if (photoURL.length > 7_000_000) {
+      return res.status(413).json({ message: "Image too large (limit ~5MB)" });
+    }
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $set: { photoURL } },
+    { new: true }
+  );
+
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  return res.json({ message: "Photo updated", user: toSafeUser(user) });
+});
+
+const deleteProfilePhoto = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { $unset: { photoURL: 1 } },
+    { new: true }
+  );
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  return res.json({ message: "Photo removed", user: toSafeUser(user) });
+});
+
+function toSafeUser(u) {
+  return {
+    userId: u.userId,
+    fName: u.fName,
+    lName: u.lName,
+    email: u.email,
+    address: u.address || null,
+    contact: u.contact || null,
+    role: u.role,
+    photoURL: u.photoURL || null,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+  };
+}
+
+/**
+ * POST /api/auth/google
+ * body: { id_token: string }
+ * Verifies Google ID token, finds/creates a user, returns your JWT + safe user.
+ */
+const googleSignIn = asyncHandler(async (req, res) => {
+  const { id_token } = req.body || {};
+  if (!id_token) return res.status(400).json({ message: "Missing id_token" });
+
+  // 1) Verify token with Google
+  const ticket = await client.verifyIdToken({
+    idToken: id_token,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  // payload contains: sub, email, email_verified, name, picture, given_name, family_name, etc.
+  const {
+    sub: googleId,
+    email,
+    email_verified: emailVerified,
+    given_name,
+    family_name,
+    name,
+    picture,
+  } = payload || {};
+
+  if (!email || emailVerified === false) {
+    return res.status(401).json({ message: "Google email not verified." });
+  }
+
+  // 2) Find or create the user
+  const emailLc = email.toLowerCase().trim();
+  let user = await User.findOne({ email: emailLc });
+
+  if (!user) {
+    user = await User.create({
+      fName: given_name || (name ? String(name).split(" ")[0] : "") || "",
+      lName: family_name || (name ? String(name).split(" ").slice(1).join(" ") : "") || "",
+      email: emailLc,
+      password: null,          // no local password
+      address: null,
+      contact: null,
+      photoURL: picture || null,
+      role: "Customer",
+      provider: "google",
+      googleId,
+    });
+  } else {
+    // If an existing local user logs in with Google, attach google fields (optional)
+    const updates = {};
+    if (!user.provider) updates.provider = "google";
+    if (!user.googleId) updates.googleId = googleId;
+    if (!user.photoURL && picture) updates.photoURL = picture;
+    if (Object.keys(updates).length) {
+      user = await User.findByIdAndUpdate(user._id, { $set: updates }, { new: true });
+    }
+  }
+
+  // 3) Issue your JWT
+  const token = signAccessToken(user);
+
+  return res.json({ token, user: toSafeUser(user) });
+});
 
 //OTP through Email
 async function sendOtpToUser({ email, name, code, expiresInMinutes = 2 }) {
@@ -750,6 +881,9 @@ module.exports = {
   getAllUsers,
   deleteUserById,
   getUserOrderSummary,
+  googleSignIn,
+  uploadProfilePhoto,
+  deleteProfilePhoto,
   createAdminUser,
   updateAdminUser
 };
